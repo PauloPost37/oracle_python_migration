@@ -53,6 +53,14 @@ data_mapping = {
 }
 
 
+def get_column_comments(conn, table):
+    with conn.cursor() as cursor:
+        column_comments_sql = "SELECT comments FROM user_col_comments WHERE table_name = :t"
+        cursor.execute(column_comments_sql, {"t":table})
+        column_comments = cursor.fetchall()
+        return column_comments
+            
+
 def establish_oracle_connection(un, pw, cs):
     try: 
         connection = oracledb.connect(user=un, password=pw, dsn=cs)
@@ -76,27 +84,56 @@ def extract_column_data(tables, conn):
             safe_table = table.replace('"', '""')
             count_sql = f'SELECT COUNT(*) FROM "{safe_table}"'
             #https://stackoverflow.com/questions/22962114/get-data-type-of-field-in-select-statement-in-oracle
-            column_data_sql = f"SELECT column_name, data_type, data_length, data_precision, data_scale FROM all_tab_columns where table_name = :t"
+            column_data_sql = f"SELECT column_name, data_type, data_length, data_precision, data_scale, nullable FROM all_tab_columns where table_name = :t"
+            column_constraint_sql = """SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner
+                                        FROM all_constraints cons, all_cons_columns cols
+                                        WHERE cols.table_name = :t
+                                        AND cons.constraint_type = 'P'
+                                        AND cons.constraint_name = cols.constraint_name
+                                        AND cons.owner = cols.owner
+                                        ORDER BY cols.table_name, cols.position"""
 
             cursor.execute(count_sql)
             row_count =  cursor.fetchone()[0]
 
             cursor.execute(column_data_sql, {"t":safe_table})
             column_data = cursor.fetchall()
-            column_data_dict[safe_table] = {"row_count" : row_count, "columns" : []}
+
+            cursor.execute(column_constraint_sql, {"t":safe_table})
+            column_constraint_data = cursor.fetchall()
+            print(column_constraint_data)
 
 
-            for column_name, data_type, data_length, data_precision, data_scale in column_data:
-                column_data_dict[safe_table]["columns"].append([column_name, data_type, data_length, data_precision, data_scale])
 
+
+            column_data_dict[table] = {"row_count" : row_count, "columns" : []}
+            column_comment = get_column_comments(conn, table)
+            #print(column_comment)
+
+            
+            for column_name, data_type, data_length, data_precision, data_scale, nullable in column_data:
+                column_data_dict[table]["columns"].append([column_name, data_type, data_length, data_precision, data_scale, nullable])
+            for counter in range(len(column_comment)):
+                column_data_dict[table]["columns"][counter].append(column_comment[counter][0])
+
+            print(column_data_dict)
+
+            for j in range (len(column_data_dict[table]["columns"])):
+                if column_data_dict[table]["columns"][j][0] == column_constraint_data[0][1]:
+                    column_data_dict[table]["columns"][j].append("Primary")
+                else:
+                    column_data_dict[table]["columns"][j].append(None)
 
     #print(column_data_dict)
     return column_data_dict
 
 
+
+
 def create_postgreSQL_schema(un, tables, column_data_dict, data_mapping):
     schema_creation_sql = f"CREATE SCHEMA AUTHORIZATION {un}"
     create_tables_sql = ""
+    create_tables_comment_sql = ""
     for table in tables:
         data_for_table_dict = column_data_dict.get(table)
         create_tables_sql += f"CREATE TABLE {table} (\n"
@@ -104,12 +141,23 @@ def create_postgreSQL_schema(un, tables, column_data_dict, data_mapping):
         for column in column_data_list:
             correct_mapping = data_mapping.get(column[1])
             if column == column_data_list[-1]:
-                create_tables_sql += f"{column[0]}      {correct_mapping}\n"
+                if column[5] == "N":
+                    create_tables_sql += f"{column[0]}      {correct_mapping} NOT NULL\n"
+                else:
+                    create_tables_sql += f"{column[0]}      {correct_mapping}\n"
             else:
-                create_tables_sql += f"{column[0]}      {correct_mapping},\n"
+                if column[5] == "N":
+                    create_tables_sql += f"{column[0]}      {correct_mapping} NOT NULL,\n"
+                else:
+                    create_tables_sql += f"{column[0]}      {correct_mapping},\n"
+            if column[-2] != None:
+                create_tables_comment_sql += f"comment on column {table}.{column[0]} is '{column[-2]}';\n"
+            
 
         create_tables_sql += ");\n"
+    print(schema_creation_sql)
     print(create_tables_sql)
+    print(create_tables_comment_sql)
 
 def main():
     connection = establish_oracle_connection(un, pw, cs)
@@ -121,68 +169,3 @@ def main():
 main()
 
 
-
-
-
-
-# with oracledb.connect(user=un, password=pw, dsn=cs) as connection:
-#     with connection.cursor() as cursor:
-#         # 1) Tabellen des Users holen
-#         sql_tables = "SELECT table_name FROM user_tables ORDER BY table_name"
-#         print(f"Following tables were found in the Oracle Database for schema '{un}':")
-#         tables = [r[0] for r in cursor.execute(sql_tables)]
-
-#         for table in tables:
-#             print(f"- {table}")
-#             try:
-#                 # 2) Rowcount
-#                 safe_table = table.replace('"', '""')
-#                 count_sql = f'SELECT COUNT(*) FROM "{safe_table}"'
-#                 cursor.execute(count_sql)
-#                 row_count = cursor.fetchone()[0]
-
-#                 # 3) Spalteninformationen
-#                 cols_sql = """
-#                     SELECT column_name,
-#                            data_type,
-#                            data_length,
-#                            data_precision,
-#                            data_scale,
-#                            nullable
-#                     FROM user_tab_columns
-#                     WHERE table_name = :t
-#                     ORDER BY column_id
-#                 """
-#                 cursor.execute(cols_sql, {"t": table.upper()})
-#                 columns = cursor.fetchall()  # Liste von Tupeln
-
-#                 # Optional: schöner strukturieren
-#                 columns_structured = [
-#                     {
-#                         "column_name": col_name,
-#                         "data_type": data_type,
-#                         "data_length": data_length,
-#                         "data_precision": data_precision,
-#                         "data_scale": data_scale,
-#                         "nullable": nullable,
-#                     }
-#                     for (
-#                         col_name,
-#                         data_type,
-#                         data_length,
-#                         data_precision,
-#                         data_scale,
-#                         nullable,
-#                     ) in columns
-#                 ]
-
-#                 tables_info[table] = {
-#                     "row_count": row_count,
-#                     "columns": columns_structured,
-#                 }
-
-#             except oracledb.DatabaseError as e:
-#                 print(f"⚠️ Error processing table {table}: {e}")
-#                 tables_info[table] = None
-
-# print(tables_info)
