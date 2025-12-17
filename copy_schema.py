@@ -1,10 +1,10 @@
 import oracledb
 import getpass
 import psycopg2
-
+import pprint
 
 ## Oracle Connection Data
-un = "DEMO_MIGRATION"
+un = "ADMIN_ALL"
 cs = "localhost/xepdb1"
 pw = getpass.getpass(f"Enter password for {un}@{cs}: ")
 
@@ -17,8 +17,6 @@ host = "localhost"
 port = "5432"
 
 
-
-tables_info = {}
 
 def establish_postgres_connection(database_name, user, password, host, port):
     connection = psycopg2.connect(f"dbname={database_name} user={user} password={password} host={host} port={port}")
@@ -37,9 +35,9 @@ data_mapping = {
     "NUMBER" : "numeric",
     "CHAR" : "char",
     "NCHAR" : "char",
-    "VARCHAR" : "varchar",
+    "VARCHAR" : "text",  ## Hier könnte es probleme geben
     "NVARCHAR" : "varchar",
-    "VARCHAR2" : "varchar",
+    "VARCHAR2" : "text",  ## Unterschiede Varchar2 und Varchar bei oracle - 
     "NVARCHAR" : "varchar",
     "NVARCHAR2" : "varchar",
     "STRING" : "varchar",
@@ -78,35 +76,46 @@ data_mapping = {
 }
 
 
-def get_column_comments(conn, table):
+def get_column_comments(conn, table, schema):
     with conn.cursor() as cursor:
-        column_comments_sql = "SELECT comments FROM user_col_comments WHERE table_name = :t"
-        cursor.execute(column_comments_sql, {"t":table})
+        column_comments_sql = f"SELECT comments FROM all_col_comments WHERE owner = '{schema}' AND table_name = :t "
+        cursor.execute(column_comments_sql, {"t": table})
         column_comments = cursor.fetchall()
         return column_comments
-            
 
-def extract_tables(conn):
+
+def get_all_schemas(conn):
+    oracle_schemas = ["ADMIN_ALL","APPQOSSYS","ANONYMOUS","AUDSYS", "CTXSYS", "DBSFWUSER", "DBSNMP","DGPDB_INT","DIP","DVF", "DVSYS","GGSYS","GSMCATUSER","GSMUSER","MDDATA","ORACLE_OCM","ORDPLUGINS","PDBADMIN","REMOTE_SCHEDULER_AGENT","SI_INFORMTN_SCHEMA","SYSBACKUP","SYSDG","SYSKM","SYSRAC","SYS$UMF","XS$NULL", "GSMADMIN_INTERNAL", "LBACSYS", "MDSYS", "OJVMSYS", "OLAPSYS","ORDDATA", "ORDSYS","OUTLN", "SYS", "SYSTEM", "WMSYS", "XDB"]
     with conn.cursor() as cursor:
-        sql_tables = "SELECT table_name FROM user_tables ORDER BY table_name"
+        sql_schemata = "SELECT username FROM all_users ORDER BY username"
+        schemata = []
+        for r in cursor.execute(sql_schemata):
+            if r[0] not in oracle_schemas:
+                schemata.append(r[0])
+    return schemata
+
+def extract_tables(conn, owner):
+
+    with conn.cursor() as cursor:
+        sql_tables = "SELECT table_name FROM all_tables WHERE owner = :t"
         tables = []
-        for r in cursor.execute(sql_tables):
+        for r in cursor.execute(sql_tables, {"t":owner}):
             tables.append(r[0])
     return tables
 
-def extract_column_data(tables, conn):
+def extract_column_data(tables, conn, schema):
     # Dict stores table as key, values are another dictionary which stores the row_count: int and columns : []
     column_data_dict = {}
     with conn.cursor() as cursor:
         for table in tables:
             safe_table = table.replace('"', '""')
-            count_sql = f'SELECT COUNT(*) FROM "{safe_table}"'
+            count_sql = f""" SELECT COUNT(*) FROM {schema}."{table}" """
             #https://stackoverflow.com/questions/22962114/get-data-type-of-field-in-select-statement-in-oracle
             # Selects general data about table information
             column_data_sql = f"SELECT column_name, data_type, data_length, data_precision, data_scale, nullable FROM all_tab_columns where table_name = :t"
 
             # Selects the constraints of each table
-            column_constraint_sql = """SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner, cons.constraint_type
+            column_constraint_sql = """SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner, cons.constraint_type, cons.constraint_name
                                         FROM all_constraints cons, all_cons_columns cols
                                         WHERE cols.table_name = :t
                                         AND cons.constraint_name = cols.constraint_name
@@ -153,7 +162,6 @@ def extract_column_data(tables, conn):
             index_data = cursor.fetchall()
 
             ######################################################################
-            #print(column_constraint_data)
 
 
 
@@ -161,8 +169,7 @@ def extract_column_data(tables, conn):
             column_data_dict[table] = {"row_count" : row_count, "columns" : [], "constraints" : [], "indexes": [], "foreign_keys": []}
 
             # gets the comments of the columns for a specific table
-            column_comment = get_column_comments(conn, table)
-            #print(column_comment)
+            column_comment = get_column_comments(conn, table, schema)
 
             # Cycles through the column data and appends it to the columns value list
             for column_name, data_type, data_length, data_precision, data_scale, nullable in column_data:
@@ -178,11 +185,12 @@ def extract_column_data(tables, conn):
             for j in range (len(column_data_dict[table]["columns"])):
                 for i in range (len(column_constraint_data)):
                     if column_data_dict[table]["columns"][j][0] == column_constraint_data[i][1]:
-                        print(column_constraint_data[i][5])
                         if column_constraint_data[i][5] == "P":
                             column_data_dict[table]["columns"][j][7] = "Primary"
-                        if column_constraint_data[i][5] != "P" and column_constraint_data[i][5] != "C":
                             column_data_dict[table]["constraints"].append(column_constraint_data[i])
+                        
+                        column_data_dict[table]["constraints"].append(column_constraint_data[i])
+                        
 
 
             column_data_dict[table]["indexes"]= index_data
@@ -190,43 +198,103 @@ def extract_column_data(tables, conn):
     return column_data_dict
 
 
+### Broken ###
+
 
 # Function to generate the postgresDDL for Schema, Table and comments
+# def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
+#     schema_creation_sql = f"CREATE SCHEMA IF NOT EXISTS {un.lower()};"
+#     create_tables_sql = ""
+#     # Chatgpt fix #
+#     create_tables_comment_sql = []
+#     # #
+#     oracle_specefic_names = ["select", "from"]
+#     for table in tables:
+#         data_for_table_dict = column_data_dict.get(table)
+#         create_tables_sql += f"""CREATE TABLE IF NOT EXISTS "{un.lower()}"."{table}" (\n"""
+#         column_data_list = data_for_table_dict.get("columns")
+#         set_primary_key = ""
+#         for column in column_data_list:
+#             column_name = column[0]
+#             correct_mapping = data_mapping.get(column[1])
+#             if column[5] == "N":
+#                 create_tables_sql += f""""{column_name}"      {correct_mapping} NOT NULL,\n"""
+#             else:
+#                 create_tables_sql += f""""{column_name}"      {correct_mapping},\n"""
+#             if column[-2] is not None:
+#                 # GPT fix #
+#                 comment_text = str(column[-2]).replace("'", "''")  # escape single quotes for PG
+#                 create_tables_comment_sql.append(
+#                     f'COMMENT ON COLUMN "{un.lower()}"."{table}"."{column_name}" IS \'{comment_text}\';'
+#                 )
+
+
+#                 ### ###
+#                 """
+#                 create_tables_comment_sql += fcomment on column "{un.lower()}"."{table}"."{column_name}" is '{column[-2]}';\n
+
+#                 """
+#             if column[7] == "Primary":
+#                 set_primary_key = f"""PRIMARY KEY ("{column_name}")\n"""
+#         create_tables_sql += set_primary_key
+#         create_tables_sql += ");\n"
+#     #print(schema_creation_sql)
+#     #print(create_tables_sql)
+#     #print(create_tables_comment_sql)
+
+#     return schema_creation_sql, create_tables_sql, create_tables_comment_sql
+
+####
+
 def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
-    schema_creation_sql = f"CREATE SCHEMA IF NOT EXISTS {un.lower()};"
-    create_tables_sql = ""
-    create_tables_comment_sql = ""
-    oracle_specefic_names = ["select", "from"]
+    schema_creation_sql = f'CREATE SCHEMA IF NOT EXISTS "{un.lower()}";'
+
+    table_ddls = []          # list of CREATE TABLE statements
+    comment_ddls = []        # list of COMMENT statements
+
     for table in tables:
-        data_for_table_dict = column_data_dict.get(table)
-        create_tables_sql += f"""CREATE TABLE IF NOT EXISTS "{un.lower()}"."{table}" (\n"""
-        column_data_list = data_for_table_dict.get("columns")
-        set_primary_key = ""
+        data_for_table_dict = column_data_dict[table]
+        column_data_list = data_for_table_dict["columns"]
+
+        col_lines = []
+        pk_cols = []
+
         for column in column_data_list:
             column_name = column[0]
-            correct_mapping = data_mapping.get(column[1])
-            if column[5] == "N":
-                create_tables_sql += f""""{column_name}"      {correct_mapping} NOT NULL,\n"""
-            else:
-                create_tables_sql += f""""{column_name}"      {correct_mapping},\n"""
-            if column[-2] != None:
-                create_tables_comment_sql += f"""comment on column "{un.lower()}"."{table}"."{column_name}" is '{column[-2]}';\n"""
-            
+            oracle_type = column[1]
+            correct_mapping = data_mapping.get(oracle_type, "text")  # default text
+
+            nullable = column[5]  # "N" means NOT NULL
+            not_null = " NOT NULL" if nullable == "N" else ""
+
+            col_lines.append(f'"{column_name}" {correct_mapping}{not_null}')
+
+            # comments (escape quotes for PG)
+            if column[6] is not None:
+                comment_text = str(column[6]).replace("'", "''")
+                comment_ddls.append(
+                    f'COMMENT ON COLUMN "{un.lower()}"."{table}"."{column_name}" IS \'{comment_text}\';'
+                )
+
             if column[7] == "Primary":
-                set_primary_key = f"""PRIMARY KEY ("{column_name}")\n"""
-        create_tables_sql += set_primary_key
-        create_tables_sql += ");\n"
-    print(schema_creation_sql)
-    print(create_tables_sql)
-    print(create_tables_comment_sql)
+                pk_cols.append(column_name)
 
-    return schema_creation_sql, create_tables_sql, create_tables_comment_sql
+        if pk_cols:
+            col_lines.append('PRIMARY KEY (' + ", ".join(f'"{c}"' for c in pk_cols) + ')')
 
-def get_oracle_data(connection, tables):
+        ddl = f'CREATE TABLE IF NOT EXISTS "{un.lower()}"."{table}" (\n  ' + ",\n  ".join(col_lines) + "\n);"
+        table_ddls.append(ddl)
+
+    return schema_creation_sql, table_ddls, comment_ddls
+
+
+
+
+def get_oracle_data(connection, tables, schema):
     column_data = {}
     for table in tables:
         cursor = connection.cursor()
-        select_sql = f"""SELECT * FROM "{table}" """
+        select_sql = f"""SELECT * FROM "{schema}"."{table}" """
         cursor.execute(select_sql)
         column_data_tuple = cursor.fetchall()
         column_data[table] = column_data_tuple 
@@ -252,40 +320,35 @@ def clean_oracle_data(oracle_data_sql):
     return cleaned_dict
 
 # Doesnt actually create a DDL needs to be refactored 
-def create_insert_ddl(cleaned_data_dict, connection_postgres, column_data_dict, tables):
+def create_insert_ddl(cleaned_data_dict, connection_postgres, column_data_dict, tables, schema):
+    # Saves all column names for the insert statement
     table_build = {}
+    # Saves the amount of columns for the Insert statement
     table_col_nums = {}
-    #print(column_data_dict)
     for table in tables:
         
         cols = [row[0] for row in column_data_dict[table]["columns"]]
  
         ## Chatgpt 5.2 ##
         col_sql = ", ".join(f'"{c}"' for c in cols)
-        ## Chatgpt 5.2 ##
+        ##             ##
 
         table_col_nums[table] = len(cols)
         table_build[table] = col_sql
-        print(table_col_nums)
-
-
-
+    
     cursor = connection_postgres.cursor()
-    # cleaned_data_keys = ["DM_CUSTOMER_SIMPLE"]
     for key in tables:
         for row in cleaned_data_dict[key]:
             
             ## Chatgpt 5.2 ##
             placeholder = ", ".join(["%s"] * table_col_nums[key])
-            ## Chatgpt 5.2 ##
+            ##             ##
 
-            #print(table_build[key])
-            insert_row_sql = f"""INSERT INTO demo_migration."{key}" ({table_build[key]})
+            insert_row_sql = f"""INSERT INTO {schema}."{key}" ({table_build[key]})
              VALUES ({placeholder});"""
 
             cursor.execute(insert_row_sql, row)
             connection_postgres.commit()
-            print(insert_row_sql)
 
 
 def create_postgreSQL_Schema(connection, schema_ddl):
@@ -293,9 +356,11 @@ def create_postgreSQL_Schema(connection, schema_ddl):
     cursor.execute(f"{schema_ddl}")
     connection.commit()
 
-
+"""
+### BROKEN
 def create_postgreSQL_table(connection, table_ddl):
     cursor = connection.cursor()
+    print(table_ddl)
     cursor.execute(f"{table_ddl}")
     connection.commit()
 
@@ -303,43 +368,119 @@ def create_postgreSQL_comments(connection, comment_ddl):
     cursor = connection.cursor()
     cursor.execute(f"{comment_ddl}")
     connection.commit()
+"""
 
+### Chatgpt 5.2 fix
 
+def exec_pg_list(connection, stmts):
+    cur = connection.cursor()
+    for stmt in stmts:
+        cur.execute(stmt)
+    connection.commit()
+
+ 
+###################
+
+def remove_primary_indexes(column_data_dict):
+    tables = column_data_dict.keys()
+    primary_key_constraint_names = []
+    for table in tables:
+        for constraint in column_data_dict[table]["constraints"]:
+            if constraint[5] == "P":
+                # Adds the constraint name to the list if the typ is P (Primary Key)
+                primary_key_constraint_names.append(constraint[6])
+        
+    for table in tables:
+        x = len(column_data_dict[table]["indexes"])
+        for index in column_data_dict[table]["indexes"]:
+            if index[0] in primary_key_constraint_names:
+                column_data_dict[table]["indexes"].remove(index)
+
+    return column_data_dict
 
 def main():
     # Connections to oracle and postgres
     connection_oracle = establish_oracle_connection(un, pw, cs)
     connection_postgres = establish_postgres_connection(database_name, user, password, host, port)
 
+    schemas = get_all_schemas(connection_oracle)
+
+    for schema in schemas:
     # List of all Tables
-    tables = extract_tables(connection_oracle)
+        tables = extract_tables(connection_oracle, schema)
+    #print(tables)
 
-    # Create the dict with all Table information
-    column_data_dict = extract_column_data(tables, connection_oracle)
+        # Create the dict with all Table information
+        column_data_dict = extract_column_data(tables, connection_oracle, schema)
 
-    # Generates the DDLs
-    create_schema_sql, create_tables_sql, create_tables_comments_sql = create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping)
+        #print(column_data_dict)
 
 
-    # Creates Schmeas, tables and comments
-    create_postgreSQL_Schema(connection_postgres, create_schema_sql)
-    create_postgreSQL_table(connection_postgres, create_tables_sql)
-    create_postgreSQL_comments(connection_postgres, create_tables_comments_sql)
+        # Creates Schmeas, tables and comments
+        create_schema_sql, table_ddls, comment_ddls = create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
 
-    # Gets oracle Data
-    oracle_data_sql = get_oracle_data(connection_oracle, tables)
-    # Cleans oracle Data so it can be inserted
-    cleaned_data = clean_oracle_data(oracle_data_sql)
-    
+        create_postgreSQL_Schema(connection_postgres, create_schema_sql)
+        exec_pg_list(connection_postgres, table_ddls)
+        exec_pg_list(connection_postgres, comment_ddls)
 
-    create_insert_ddl(cleaned_data, connection_postgres, column_data_dict, tables)
 
+
+        # Gets oracle Data
+        oracle_data_sql = get_oracle_data(connection_oracle, tables, schema)
+        # Cleans oracle Data so it can be inserted
+        cleaned_data = clean_oracle_data(oracle_data_sql)
         
-main()
+
+        create_insert_ddl(cleaned_data, connection_postgres, column_data_dict, tables, schema)
+
+
+def debug_main():
+    connection_oracle = establish_oracle_connection(un, pw, cs)
+    connection_postgres = establish_postgres_connection(database_name, user, password, host, port)
+
+    schemas = get_all_schemas(connection_oracle)
+
+    for schema in schemas:
+    # List of all Tables
+        tables = extract_tables(connection_oracle, schema)
+    #print(tables)
+
+        # Create the dict with all Table information
+        column_data_dict = extract_column_data(tables, connection_oracle, schema)
+
+        print("")
+        pprint.pprint(column_data_dict)
+        remove_primary_indexes(column_data_dict)
+        print("")
+        pprint.pprint(column_data_dict)
+
+
+        # # Creates Schmeas, tables and comments
+        # create_schema_sql, table_ddls, comment_ddls = create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
+
+        # create_postgreSQL_Schema(connection_postgres, create_schema_sql)
+        # exec_pg_list(connection_postgres, table_ddls)
+        # exec_pg_list(connection_postgres, comment_ddls)
+
+
+
+        # # Gets oracle Data
+        # oracle_data_sql = get_oracle_data(connection_oracle, tables, schema)
+        # # Cleans oracle Data so it can be inserted
+        # cleaned_data = clean_oracle_data(oracle_data_sql)
+        
+
+        # create_insert_ddl(cleaned_data, connection_postgres, column_data_dict, tables, schema)
+        
+debug_main()
 
 ## TODO ##
 
 # correctly translate bytea
 
+## Mit dem DDL vom Backup vergleichen beim create
 
+## Backup erstellen lassen und parsen 
+
+## PL/SQL Trigger anschauen
 
