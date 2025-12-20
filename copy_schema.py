@@ -5,6 +5,8 @@ from config.config import data_mapping, oracle_connection_data, postgres_connect
 from src.oracle.connection_oracle import establish_oracle_connection
 from src.postgres.conection_postgres import establish_postgres_connection
 import src.oracle.extract_data as oracle_extract
+
+
 import src.postgres.create as pg_create
 import src.postgres.insert_into_pg as pg_insert
 
@@ -53,25 +55,29 @@ def main():
     connection_postgres = establish_postgres_connection(postgres_connection_data["database_name"], postgres_connection_data["user"], postgres_connection_data["password"], postgres_connection_data["host"], postgres_connection_data["port"])
 
     schemas = oracle_extract.get_all_schemas(connection_oracle)
-
     for schema in schemas:
     # List of all Tables
         tables = oracle_extract.get_tables(connection_oracle, schema)
 
-        # Create a dict with all Table information
-        column_data_dict = oracle_extract.get_column_data(tables, connection_oracle, schema)
 
-        remove_primary_indexes(column_data_dict)
-        #pprint.pprint(column_data_dict)
+        # Creates a dictionary with all relevant data for each table: {"table": {"row_count" : int, "columns" : [], "constraints" : [], "indexes": [], "foreign_keys": []}}
+        column_data_dict = oracle_extract.create_data_dict(tables)
 
-        index_dll = create_postgres_indexes(column_data_dict)
-
-        print(index_dll)
-
+        
+        column_data_dict = oracle_extract.get_column_row_count(connection_oracle, column_data_dict, schema)
+        column_data_dict = oracle_extract.get_column_constraints(connection_oracle, column_data_dict, schema)
+        column_data_dict = oracle_extract.get_column_data(connection_oracle, column_data_dict, schema)
 
         # # Creates Schmeas, tables and comments
-        # create_schema_sql, table_ddls, comment_ddls = create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
+        create_schema_sql, table_ddls, comment_ddls = pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
 
+
+
+        #remove_primary_indexes(column_data_dict)
+        pprint.pprint(column_data_dict)
+        #index_dll = create_postgres_indexes(column_data_dict)
+
+        #print(index_dll)
         # create_postgreSQL_Schema(connection_postgres, create_schema_sql)
         # exec_pg_list(connection_postgres, table_ddls)
         # exec_pg_list(connection_postgres, comment_ddls)
