@@ -55,6 +55,7 @@ def main():
     connection_postgres = establish_postgres_connection(postgres_connection_data["database_name"], postgres_connection_data["user"], postgres_connection_data["password"], postgres_connection_data["host"], postgres_connection_data["port"])
 
     schemas = oracle_extract.get_all_schemas(connection_oracle)
+    schemas = ['DEMO_MIGRATION']
     for schema in schemas:
     # List of all Tables
         tables = oracle_extract.get_tables(connection_oracle, schema)
@@ -67,7 +68,7 @@ def main():
         column_data_dict = oracle_extract.get_column_row_count(connection_oracle, column_data_dict, schema)
         column_data_dict = oracle_extract.get_column_constraints(connection_oracle, column_data_dict, schema)
         column_data_dict = oracle_extract.get_column_data(connection_oracle, column_data_dict, schema)
-
+        column_data_dict = oracle_extract.get_oracle_indexes(connection_oracle, column_data_dict, schema)
         # # Creates Schmeas, tables and comments
         create_schema_sql, table_ddls, comment_ddls = pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
 
