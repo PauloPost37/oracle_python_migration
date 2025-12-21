@@ -70,14 +70,14 @@ def main():
         column_data_dict = oracle_extract.get_column_data(connection_oracle, column_data_dict, schema)
         column_data_dict = oracle_extract.get_oracle_indexes(connection_oracle, column_data_dict, schema)
         # # Creates Schmeas, tables and comments
-        create_schema_sql, table_ddls, comment_ddls = pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
+        #create_schema_sql, table_ddls, comment_ddls = pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
 
 
-
+        #print(create_schema_sql, table_ddls, comment_ddls)
         #remove_primary_indexes(column_data_dict)
         pprint.pprint(column_data_dict)
         #index_dll = create_postgres_indexes(column_data_dict)
-
+        pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
         #print(index_dll)
         # create_postgreSQL_Schema(connection_postgres, create_schema_sql)
         # exec_pg_list(connection_postgres, table_ddls)

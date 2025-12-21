@@ -14,14 +14,6 @@ def get_column_comments(conn, table, schema, column_data_dict):
 
 
 def get_column_comments(conn, table, schema, column_data_dict):
-    """
-    Robustly attach column comments by matching COLUMN_NAME (not by position/order).
-
-    Expects column_data_dict[table]["columns"] entries like:
-      [column_name, data_type, data_length, data_precision, data_scale, nullable, comment, ...]
-    and writes the comment into index 6.
-    """
-    # 1) Read comments into a map {colname: comment}
     with conn.cursor() as cursor:
         sql = """
             SELECT column_name, comments
@@ -68,7 +60,6 @@ def get_all_schemas(conn):
     return schemata
 
 def get_tables(conn, owner):
-
     with conn.cursor() as cursor:
         sql_tables = "SELECT table_name FROM all_tables WHERE owner = :t"
         tables = []
@@ -155,7 +146,9 @@ def get_column_data(conn, column_data_dict, schema):
                    data_length,
                    data_precision,
                    data_scale,
-                   nullable
+                   nullable,
+                   data_default,
+                   identity_column
             FROM all_tab_columns
             WHERE table_name = :t
               AND owner = :s
@@ -166,8 +159,8 @@ def get_column_data(conn, column_data_dict, schema):
             cursor.execute(column_data_sql, {"t":table, "s": schema})
             column_data = cursor.fetchall()
 
-        for column_name, data_type, data_length, data_precision, data_scale, nullable in column_data:
-                column_data_dict[table]["columns"].append([column_name, data_type, data_length, data_precision, data_scale, nullable, None, None])
+        for column_name, data_type, data_length, data_precision, data_scale, nullable, data_default, identity_column in column_data:
+                column_data_dict[table]["columns"].append([column_name, data_type, data_length, data_precision, data_scale, nullable, None, data_default, identity_column])
 
         column_data_dict = get_column_comments(conn, table, schema, column_data_dict)
 
