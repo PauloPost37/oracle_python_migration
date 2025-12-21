@@ -212,16 +212,16 @@ def get_oracle_indexes(conn, column_data_dict, schema):
             c[13] for c in column_data_dict[table]["constraints"] if c[13] is not None
         }
 
-        print(f"\n[{schema}.{table}]")
-        print("  constraint_index_names:", constraint_index_names)
+        #print(f"\n[{schema}.{table}]")
+        #print("  constraint_index_names:", constraint_index_names)
 
 
         with conn.cursor() as cursor:
             cursor.execute(index_sql, {"t": table, "s": schema})
             indexes = cursor.fetchall()
 
-        print("  indexes_from_query:", {r[0] for r in indexes})  # r[0] == index_name
-        print("  indexes_kept:", {x[0] for x in column_data_dict[table]['indexes']})
+        #print("  indexes_from_query:", {r[0] for r in indexes})  # r[0] == index_name
+        #print("  indexes_kept:", {x[0] for x in column_data_dict[table]['indexes']})
 
         for (index_name, column_name, column_position, descend,
              index_type, uniqueness, table_owner, table_name, table_type) in indexes:

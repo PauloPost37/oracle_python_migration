@@ -9,6 +9,7 @@ import src.oracle.extract_data as oracle_extract
 
 import src.postgres.create as pg_create
 import src.postgres.insert_into_pg as pg_insert
+import src.postgres.alter_table as alter_table
 
 
 
@@ -55,7 +56,7 @@ def main():
     connection_postgres = establish_postgres_connection(postgres_connection_data["database_name"], postgres_connection_data["user"], postgres_connection_data["password"], postgres_connection_data["host"], postgres_connection_data["port"])
 
     schemas = oracle_extract.get_all_schemas(connection_oracle)
-    schemas = ['DEMO_MIGRATION']
+    schemas = ['MONDIAL']
     for schema in schemas:
     # List of all Tables
         tables = oracle_extract.get_tables(connection_oracle, schema)
@@ -75,9 +76,10 @@ def main():
 
         #print(create_schema_sql, table_ddls, comment_ddls)
         #remove_primary_indexes(column_data_dict)
-        pprint.pprint(column_data_dict)
+        #pprint.pprint(column_data_dict)
         #index_dll = create_postgres_indexes(column_data_dict)
         pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
+        alter_table.create_postgreSQL_alter_DDL(schema, tables, column_data_dict)
         #print(index_dll)
         # create_postgreSQL_Schema(connection_postgres, create_schema_sql)
         # exec_pg_list(connection_postgres, table_ddls)
