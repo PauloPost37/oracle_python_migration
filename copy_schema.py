@@ -41,17 +41,21 @@ def create_postgres_indexes(column_data_dict):
 
     for table in tables:
         for index in column_data_dict[table]["indexes"]:
-            if index[3] == "UNIQUE":
+            # index[5] holds the uniqueness flag from the Oracle query
                 index_name = f"idx_{index[5]}_{index[1]}"
-                statement = f"""CREATE UNIQUE INDEX "{index_name}" ON "{index[4]}"."{index[5]}" ("{index[1]}")"""
-                insert_index_statements.append(statement)
-            else:
-                index_name = f"idx_{index[5]}_{index[1]}"
-                statement = f"""CREATE INDEX "{index_name}" ON "{index[4]}"."{index[5]}" ("{index[1]}")"""
-                insert_index_statements.append(statement)
+                statement = f"""CREATE INDEX "{index_name}" ON "{index[4]}"."{index[5]}" ("{index[1]}")\n"""
+                with open("output_alter.txt", "a") as output:
+                    output.write(statement)
+                #insert_index_statements.append(statement)
+
+
     return insert_index_statements
             
 def main():
+    # start fresh output on each run
+    open("output.txt", "w").close()
+    open("output_alter.txt", "w").close()
+
     connection_oracle = establish_oracle_connection(oracle_connection_data["un"], oracle_connection_data["pw"], oracle_connection_data["cs"])
     connection_postgres = establish_postgres_connection(postgres_connection_data["database_name"], postgres_connection_data["user"], postgres_connection_data["password"], postgres_connection_data["host"], postgres_connection_data["port"])
 
@@ -71,16 +75,16 @@ def main():
         column_data_dict = oracle_extract.get_column_data(connection_oracle, column_data_dict, schema)
         column_data_dict = oracle_extract.get_oracle_indexes(connection_oracle, column_data_dict, schema)
         # # Creates Schmeas, tables and comments
-        #create_schema_sql, table_ddls, comment_ddls = pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
+        pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
 
 
         #print(create_schema_sql, table_ddls, comment_ddls)
         #remove_primary_indexes(column_data_dict)
         #pprint.pprint(column_data_dict)
         #index_dll = create_postgres_indexes(column_data_dict)
-        pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
         alter_table.create_postgreSQL_alter_DDL(schema, tables, column_data_dict)
         #print(index_dll)
+        create_postgres_indexes(column_data_dict)
         # create_postgreSQL_Schema(connection_postgres, create_schema_sql)
         # exec_pg_list(connection_postgres, table_ddls)
         # exec_pg_list(connection_postgres, comment_ddls)
@@ -101,9 +105,10 @@ main()
 
 # correctly translate bytea
 
-## Mit dem DDL vom Backup vergleichen beim create
+## Eventuell mit dump vergleichen
 
-## Backup erstellen lassen und parsen 
+## (PL/SQL Trigger anschauen)
 
-## PL/SQL Trigger anschauen
+## Sequences und views übernehmen
+
 

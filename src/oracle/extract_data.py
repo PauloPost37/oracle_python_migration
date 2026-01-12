@@ -12,7 +12,7 @@ def get_column_comments(conn, table, schema, column_data_dict):
     return column_data_dict
 """
 
-
+# Mit Chatgpt generiert bzw anpassen lassen
 def get_column_comments(conn, table, schema, column_data_dict):
     with conn.cursor() as cursor:
         sql = """
@@ -85,9 +85,10 @@ def get_column_row_count(conn, column_data_dict, schema):
         column_data_dict[table]["row_count"] = row_count
     return column_data_dict
 
-def get_column_constraints(conn, column_data_dict, schema):
+def   get_column_constraints(conn, column_data_dict, schema):
     tables = column_data_dict.keys()
     for table in tables:
+        # SQL expanded by ChatGPT to encompass all constraints
         column_constraint_sql = """ SELECT
                                         cons.owner,
                                         cons.table_name,
@@ -97,6 +98,9 @@ def get_column_constraints(conn, column_data_dict, schema):
                                         cols.position,
                                         cons.r_owner,
                                         cons.r_constraint_name,
+                                        rcols.table_name AS r_table_name,
+                                        rcols.column_name AS r_column_name,
+                                        rcols.position AS r_position,
                                         cons.search_condition,
                                         cons.deferrable,
                                         cons.deferred,
@@ -108,6 +112,10 @@ def get_column_constraints(conn, column_data_dict, schema):
                                         ON cons.owner = cols.owner
                                         AND cons.constraint_name = cols.constraint_name
                                         AND cons.table_name = cols.table_name
+                                    LEFT JOIN all_cons_columns rcols
+                                        ON cons.r_owner = rcols.owner
+                                        AND cons.r_constraint_name = rcols.constraint_name
+                                        AND rcols.position = cols.position
                                     WHERE cons.owner = :s
                                     AND cons.table_name NOT LIKE 'BIN$%'
                                     AND cons.constraint_name NOT LIKE 'BIN$%'
@@ -125,7 +133,7 @@ def get_column_constraints(conn, column_data_dict, schema):
             cleaned_constraint_list = []
 
             for constraint in column_constraints:
-                search_condition = constraint[8]
+                search_condition = constraint[11]
                 if search_condition != None:
                     search_condition = search_condition.upper().replace('"', '').strip()
                     if 'IS NOT NULL' not in search_condition:
@@ -206,10 +214,11 @@ def get_oracle_indexes(conn, column_data_dict, schema):
         order by ind.table_owner, ind.table_name, ind.index_name, ind_col.column_position
     """
 
+    # Durch chatgpt angepasst
     for table in tables:
         # alle Index-Namen, die zu Constraints gehören (PK/UK etc.)
         constraint_index_names = {
-            c[13] for c in column_data_dict[table]["constraints"] if c[13] is not None
+            c[16] for c in column_data_dict[table]["constraints"] if c[16] is not None
         }
 
         #print(f"\n[{schema}.{table}]")

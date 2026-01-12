@@ -48,7 +48,7 @@ data_mapping = {
 
 oracle_connection_data = {
     "un" : "ADMIN_ALL",
-    "cs" : "192.168.188.55/xepdb1",
+    "cs" : "localhost/xepdb1",
     "pw" : "abcd1234"
 }
 

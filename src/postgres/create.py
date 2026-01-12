@@ -1,115 +1,42 @@
-### Broken ###
 
+import re
 
-# Function to generate the postgresDDL for Schema, Table and comments
-# def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
-#     schema_creation_sql = f"CREATE SCHEMA IF NOT EXISTS {un.lower()};"
-#     create_tables_sql = ""
-#     # Chatgpt fix #
-#     create_tables_comment_sql = []
-#     # #
-#     oracle_specefic_names = ["select", "from"]
-#     for table in tables:
-#         data_for_table_dict = column_data_dict.get(table)
-#         create_tables_sql += f"""CREATE TABLE IF NOT EXISTS "{un.lower()}"."{table}" (\n"""
-#         column_data_list = data_for_table_dict.get("columns")
-#         set_primary_key = ""
-#         for column in column_data_list:
-#             column_name = column[0]
-#             correct_mapping = data_mapping.get(column[1])
-#             if column[5] == "N":
-#                 create_tables_sql += f""""{column_name}"      {correct_mapping} NOT NULL,\n"""
-#             else:
-#                 create_tables_sql += f""""{column_name}"      {correct_mapping},\n"""
-#             if column[-2] is not None:
-#                 # GPT fix #
-#                 comment_text = str(column[-2]).replace("'", "''")  # escape single quotes for PG
-#                 create_tables_comment_sql.append(
-#                     f'COMMENT ON COLUMN "{un.lower()}"."{table}"."{column_name}" IS \'{comment_text}\';'
-#                 )
-
-
-#                 ### ###
-#                 """
-#                 create_tables_comment_sql += fcomment on column "{un.lower()}"."{table}"."{column_name}" is '{column[-2]}';\n
-
-#                 """
-#             if column[7] == "Primary":
-#                 set_primary_key = f"""PRIMARY KEY ("{column_name}")\n"""
-#         create_tables_sql += set_primary_key
-#         create_tables_sql += ");\n"
-#     #print(schema_creation_sql)
-#     #print(create_tables_sql)
-#     #print(create_tables_comment_sql)
-
-#     return schema_creation_sql, create_tables_sql, create_tables_comment_sql
-
-####
-# """
-# def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
-#     schema_creation_sql = f'CREATE SCHEMA IF NOT EXISTS "{un}";'
-
-#     table_ddls = []          # list of CREATE TABLE statements
-#     comment_ddls = []        # list of COMMENT statements
-
-#     for table in tables:
-#         create_table_sql = ""
-
-#         create_table_sql += """CREATE TABLE IF NOT EXISTS "{table}" ( \n"""
-
-#         for column in column_data_dict[table]["columns"]:
-#             column_name = column[0]
-#             oracle_type = column[1]
-#             correct_mapping = data_mapping.get(oracle_type, "text")  # default text
-
-#             nullable = column[5]  # "N" means NOT NULL
-#             not_null = " NOT NULL" if nullable == "N" else ""
-
-#             create_table_sql += f'  "{column_name}"    {correct_mapping}{not_null}'
-
-#             # comments (escape quotes for PG)
-#             if column[6] is not None:
-#                 comment_text = str(column[6]).replace("'", "''")
-#                 comment_ddls.append(
-#                     f'COMMENT ON COLUMN "{un.lower()}"."{table}"."{column_name}" IS \'{comment_text}\';'
-#                 )
-
-#             if column[7] == "Primary":
-#                 pk_cols.append(column_name)
-
-#         if pk_cols:
-#             col_lines.append('PRIMARY KEY (' + ", ".join(f'"{c}"' for c in pk_cols) + ')')
-
-#         ddl = f'CREATE TABLE IF NOT EXISTS "{un.lower()}"."{table}" (\n  ' + ",\n  ".join(col_lines) + "\n);"
-#         table_ddls.append(ddl)
-
-#     return schema_creation_sql, table_ddls, comment_ddls
-# """
-
-def group_primary_constraints(column_data_dict, table):
+# CHAT gpt generuert
+def get_pk_metadata(column_data_dict, table):
     pk_cols = []
+    pk_deferrable = None
+    pk_deferred = None
+    pk_validated = None
+
     for c in column_data_dict[table]["constraints"]:
         if c[3] == "P":
             col_name = c[4]
             pos = c[5]
             pk_cols.append((pos, col_name))
+            # deferrable / deferred / validated flags live on the PK constraint row
+            pk_deferrable = pk_deferrable or c[12]
+            pk_deferred = pk_deferred or c[13]
+            pk_validated = pk_validated or c[15]
 
-    # nach position sortieren
     pk_cols.sort(key=lambda x: x[0])
+    return {
+        "columns": [col for _, col in pk_cols],
+        "deferrable": pk_deferrable,
+        "deferred": pk_deferred,
+        "validated": pk_validated,
+    }
 
-    # nur Spaltennamen zurückgeben
-    return [col for _, col in pk_cols]
-
-
-
-
+# Mit chatGPT debugged
 def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
     schema_creation_sql = f'CREATE SCHEMA IF NOT EXISTS "{un}";\n'
     with open("output.txt", "a") as output:
         output.write(schema_creation_sql)
     for table in tables:
-        create_table_sql = f"""CREATE TABLE IF NOT EXISTS "{un}"."{table}" ( \n"""
-        comments_sql = """"""
+        column_lines = []
+        comment_lines = []
+        pk_meta = get_pk_metadata(column_data_dict, table)
+        pk_cols = pk_meta["columns"]
+
         for column in column_data_dict[table]["columns"]:
             column_name = column[0]
             oracle_type = column[1]
@@ -117,46 +44,77 @@ def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
             oracle_default = column[7]
             oracle_identity = column[8]
             correct_mapping = data_mapping.get(oracle_type, "text")
- 
-            # ADD not_null constraint
+
             not_null = " NOT NULL" if nullable == "N" else ""
 
-            # ADD Default
             pg_default = None
             if oracle_default:
-                if oracle_default.strip().upper() == "SYSDATE":
+                default_clean = str(oracle_default).strip()
+                default_upper = default_clean.upper()
+
+                # Common Oracle defaults mapped to PG equivalents
+                if default_upper == "SYSDATE" or default_upper == "SYSTIMESTAMP":
                     pg_default = "CURRENT_TIMESTAMP"
+                elif default_upper == "CURRENT_DATE":
+                    pg_default = "CURRENT_DATE"
+                elif default_upper == "USER":
+                    pg_default = "CURRENT_USER"
+                elif "NEXTVAL" in default_upper:
+                    # Convert sequence nextval to PG format: nextval('seq')
+                    seq_match = re.search(r"([A-Za-z0-9_.$]+)\s*\.\s*NEXTVAL", default_upper)
+                    seq_name = seq_match.group(1) if seq_match else default_clean.replace('"', '')
+                    seq_name = seq_name.replace(".", "_")
+                    pg_default = f"nextval('{seq_name}')"
+                elif default_upper.startswith("TO_DATE(") or default_upper.startswith("TO_TIMESTAMP("):
+                    pg_default = default_clean  # Postgres supports these functions
                 else:
-                    pg_default = oracle_default
+                    is_number = default_clean.replace(".", "", 1).lstrip("-").isdigit()
+                    if default_clean.startswith(("'", '"')) or is_number:
+                        pg_default = default_clean
+                    else:
+                        pg_default = "'" + default_clean.replace("'", "''") + "'"
 
             default = f" DEFAULT {pg_default}" if pg_default else ""
-
-            # Add identity
 
             identity_sql = ""
             if oracle_identity == "YES":
                 identity_sql = " GENERATED BY DEFAULT AS IDENTITY"
                 default = ""
 
+            column_lines.append(f'  "{column_name}"    {correct_mapping}{identity_sql}{not_null}{default}')
 
-            if column == column_data_dict[table]["columns"][-1]:
+            if column[6] is not None:
+                comment_text = str(column[6]).replace("'", "''")
+                comment_lines.append(
+                    f'COMMENT ON COLUMN "{un}"."{table}"."{column_name}" IS \'{comment_text}\';'
+                )
 
-                cols = group_primary_constraints(column_data_dict, table)
-                if cols:
-                    create_table_sql += f'  "{column_name}"    {correct_mapping}{identity_sql}{not_null}{default},\n'
-                    pk_sql = '  PRIMARY KEY (' + ', '.join(f'"{c}"' for c in cols) + ')\n'
-                    create_table_sql += pk_sql
+        if pk_cols:
+            pk_line = '  PRIMARY KEY (' + ', '.join(f'"{c}"' for c in pk_cols) + ')'
+
+            deferrable = pk_meta.get("deferrable")
+            deferred = pk_meta.get("deferred")
+            validated = pk_meta.get("validated")
+
+            if deferrable and str(deferrable).upper() == "DEFERRABLE":
+                pk_line += " DEFERRABLE"
+                if deferred and str(deferred).upper() == "DEFERRED":
+                    pk_line += " INITIALLY DEFERRED"
                 else:
-                    create_table_sql += f'  "{column_name}"    {correct_mapping}{identity_sql}{not_null}{default}\n'
+                    pk_line += " INITIALLY IMMEDIATE"
             else:
-                create_table_sql += f'  "{column_name}"    {correct_mapping}{identity_sql}{not_null}{default},\n'
-        create_table_sql += ");\n\n"
-        if column[6] is not None:
-            comment_text = str(column[6]).replace("'", "''")
-            comments_sql += f'COMMENT ON COLUMN "{un.lower()}"."{table}"."{column_name}" IS \'{comment_text}\';'
+                pk_line += " NOT DEFERRABLE"
+
+            if validated and str(validated).upper() == "NOT VALIDATED":
+                pk_line += " NOT VALIDATED"
+
+            column_lines.append(pk_line)
+
+        create_table_sql = f'CREATE TABLE IF NOT EXISTS "{un}"."{table}" ( \n' + ",\n".join(column_lines) + "\n);\n\n"
         with open("output.txt", "a") as output:
             output.write(create_table_sql)
-            output.write(comments_sql)
+            if comment_lines:
+                output.write("\n".join(comment_lines) + "\n")
 
 
 
