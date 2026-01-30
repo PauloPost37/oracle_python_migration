@@ -1,3 +1,4 @@
+# Debugged with Chat gpt 5.2
 def group_constraints(constraint_rows):
 
     grouped_constraints = {}
@@ -10,7 +11,7 @@ def group_constraints(constraint_rows):
                 "con_type" : constraint[3],
                 "schema" : constraint[0],
                 "table" : constraint[1],
-                "columns" : [],  # child columns
+                "columns" : [], 
                 "condition" : constraint[11],
                 "deferrable" : constraint[12],
                 "deferred" : constraint[13],
@@ -18,7 +19,7 @@ def group_constraints(constraint_rows):
                 "ref_owner" : constraint[6],
                 "ref_constraint" : constraint[7],
                 "ref_table" : constraint[8],
-                "ref_columns" : [],  # parent columns
+                "ref_columns" : [],
             }
             
             # Columns                     # Poistion
@@ -32,7 +33,7 @@ def group_constraints(constraint_rows):
 
     return grouped_constraints
 
-# Debugged and expanded with chat GPT
+# Debugged and heavily expanded with chat GPT
 def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
     cleared = False
     for table in tables:
@@ -43,11 +44,11 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
         grouped_constraints = group_constraints(column_data_dict[table]["constraints"])
 
         constraint_names = grouped_constraints.keys()
-        print(grouped_constraints)
-        print(constraint_names)
+        #print(grouped_constraints)
+        #print(constraint_names)
         for constraint in constraint_names:
             con_type = grouped_constraints[constraint]["con_type"]
-            print(con_type)
+            #print(con_type)
             if con_type == "P":
                 continue
             if con_type == "C":
@@ -55,8 +56,8 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
                 if not con_condition:
                     continue
                 if " IS NOT NULL" not in con_condition.upper():
-                    alter_table_statement = f"""ALTER TABLE "{schema}"."{table}"\n"""
-                    alter_table_statement += f"""ADD CONSTRAINT "{constraint}" CHECK ({con_condition})"""
+                    alter_table_statement = f"""ALTER TABLE "{schema}"."{table.lower()}" """
+                    alter_table_statement += f"""ADD CONSTRAINT "{constraint.lower()}" CHECK ({con_condition})"""
 
                     deferrable = grouped_constraints[constraint].get("deferrable")
                     deferred = grouped_constraints[constraint].get("deferred")
@@ -79,11 +80,11 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
                         output.write(alter_table_statement)
 
             if con_type == "U":
-                alter_table_statement = f"""ALTER TABLE "{schema}"."{table}"\n"""
+                alter_table_statement = f"""ALTER TABLE "{schema}"."{table.lower()}" """
                 
-                columns = ", ".join(f'"{col}"' for _, col in grouped_constraints[constraint]["columns"])
+                columns = ", ".join(f'"{col.lower()}"' for _, col in grouped_constraints[constraint]["columns"])
 
-                alter_table_statement += f"""ADD CONSTRAINT "{constraint}" UNIQUE ({columns})"""
+                alter_table_statement += f"""ADD CONSTRAINT "{constraint.lower()}" UNIQUE ({columns})"""
 
                 deferrable = grouped_constraints[constraint].get("deferrable")
                 deferred = grouped_constraints[constraint].get("deferred")
@@ -107,17 +108,18 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
 
             if con_type == "R":
                 child_cols = ", ".join(
-                    f'"{col}"' for _, col in sorted(grouped_constraints[constraint]["columns"], key=lambda x: x[0])
+                    f'"{col.lower()}"' for _, col in sorted(grouped_constraints[constraint]["columns"], key=lambda x: x[0])
                 )
                 parent_cols = ", ".join(
-                    f'"{col}"' for _, col in sorted(grouped_constraints[constraint]["ref_columns"], key=lambda x: x[0])
+                    f'"{col.lower()}"' for _, col in sorted(grouped_constraints[constraint]["ref_columns"], key=lambda x: x[0])
                 )
 
                 ref_owner = grouped_constraints[constraint].get("ref_owner", schema)
                 ref_table = grouped_constraints[constraint].get("ref_table", table)
 
-                alter_table_statement = f"""ALTER TABLE "{schema}"."{table}"\n"""
-                alter_table_statement += f"""ADD CONSTRAINT "{constraint}" FOREIGN KEY ({child_cols}) REFERENCES "{ref_owner}"."{ref_table}" ({parent_cols})"""
+                alter_table_statement = f"""ALTER TABLE "{schema}"."{table.lower()}" """
+                alter_table_statement += f"""ADD CONSTRAINT "{constraint.lower()}" FOREIGN KEY ({child_cols}) REFERENCES "{ref_owner}"."{ref_table.lower()}" ({parent_cols})"""
+
 
                 deferrable = grouped_constraints[constraint].get("deferrable")
                 deferred = grouped_constraints[constraint].get("deferred")
@@ -154,15 +156,4 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
             create_index_stmt = f"""CREATE UNIQUE INDEX "{index_name}" ON "{schema}"."{table}" ({col_list});\n"""
             with open("output_alter.txt", "a") as output:
                 output.write(create_index_stmt)
-                
-            # if con_type == "R":
-            #     alter_table_statement = f"""ALTER TABLE "{schema}"."{table}"\n"""
-            #     columns = ", ".join(f'"{c}"' for c in group_constraints[constraint]["columns"]) 
-            #     alter_table_statement += f"""ADD CONSTRAINT "{constraint}" UNIQUE ({columns});"""
-
-
-
-## ToDo 
-
-# Foreign keys hinzufügen
-# Nicht alle alterstatments seperat in die Datei schreiben
+            

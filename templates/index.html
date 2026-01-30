@@ -1,0 +1,218 @@
+<!-- Gemini 3 pro -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle to PostgreSQL Migration</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .container { max-width: 900px; margin-top: 30px; }
+        .card { margin-bottom: 20px; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container">
+    <h2 class="mb-4 text-center">Oracle to PostgreSQL Migration Tool</h2>
+    
+    <div class="row">
+        <!-- Oracle Configuration -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header text-white bg-danger">Oracle Connection</div>
+                <div class="card-body">
+                    <form id="oracle-form">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="oracle_un" value="{{ oracle.un }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" id="oracle_pw" value="{{ oracle.pw }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Connection String</label>
+                            <input type="text" class="form-control" id="oracle_cs" value="{{ oracle.cs }}">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Postgres Configuration -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header text-white bg-primary">PostgreSQL Connection</div>
+                <div class="card-body">
+                    <form id="postgres-form">
+                        <div class="mb-3">
+                            <label class="form-label">Database Name</label>
+                            <input type="text" class="form-control" id="pg_db" value="{{ postgres.database_name }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">User</label>
+                            <input type="text" class="form-control" id="pg_user" value="{{ postgres.user }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" id="pg_pw" value="{{ postgres.password }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Host</label>
+                            <input type="text" class="form-control" id="pg_host" value="{{ postgres.host }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Port</label>
+                            <input type="text" class="form-control" id="pg_port" value="{{ postgres.port }}">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mb-4">
+        <button class="btn btn-info text-white" onclick="loadSchemas()">Load Schemas & Save Config</button>
+    </div>
+
+    <!-- Schemas Selection -->
+    <div class="card" id="schema-card" style="display: none;">
+        <div class="card-header">Select Schemas to Migrate</div>
+        <div class="card-body">
+            <div id="schema-list" class="row">
+                <!-- Checkboxes will be inserted here -->
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button class="btn btn-success" onclick="startMigration()">Start Migration</button>
+        </div>
+    </div>
+
+    <!-- Logs / Output -->
+    <div class="card mt-4">
+        <div class="card-header">Logs</div>
+        <div class="card-body">
+            <pre id="log-output" style="height: 200px; overflow-y: scroll; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6;"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function loadSchemas() {
+        const oracleData = {
+            un: document.getElementById('oracle_un').value,
+            pw: document.getElementById('oracle_pw').value,
+            cs: document.getElementById('oracle_cs').value
+        };
+        
+        // Also gather PG data to save everything
+        const pgData = {
+            database_name: document.getElementById('pg_db').value,
+            user: document.getElementById('pg_user').value,
+            password: document.getElementById('pg_pw').value,
+            host: document.getElementById('pg_host').value,
+            port: document.getElementById('pg_port').value
+        };
+
+        log("Connecting to Oracle to fetch schemas...");
+        
+        try {
+            const response = await fetch('/get_schemas', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({oracle: oracleData, postgres: pgData})
+            });
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                log("Error: " + result.error);
+                return;
+            }
+            
+            log("Schemas loaded successfully.");
+            
+            const listContainer = document.getElementById('schema-list');
+            listContainer.innerHTML = '';
+            
+            result.schemas.forEach(schema => {
+                const div = document.createElement('div');
+                div.className = 'col-md-3 mb-2';
+                div.innerHTML = `
+                    <div class="form-check">
+                        <input class="form-check-input schema-check" type="checkbox" value="${schema}" id="schema_${schema}">
+                        <label class="form-check-label" for="schema_${schema}">
+                            ${schema}
+                        </label>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+            
+            document.getElementById('schema-card').style.display = 'block';
+            
+        } catch (e) {
+            log("Network or Server Error: " + e);
+        }
+    }
+
+    async function startMigration() {
+        const selectedSchemas = Array.from(document.querySelectorAll('.schema-check:checked')).map(cb => cb.value);
+        
+        if (selectedSchemas.length === 0) {
+            log("Please select at least one schema.");
+            return;
+        }
+
+        const oracleData = {
+            un: document.getElementById('oracle_un').value,
+            pw: document.getElementById('oracle_pw').value,
+            cs: document.getElementById('oracle_cs').value
+        };
+        
+        const pgData = {
+            database_name: document.getElementById('pg_db').value,
+            user: document.getElementById('pg_user').value,
+            password: document.getElementById('pg_pw').value,
+            host: document.getElementById('pg_host').value,
+            port: document.getElementById('pg_port').value
+        };
+
+        log("Starting migration for: " + selectedSchemas.join(', '));
+        
+        try {
+            const response = await fetch('/run_migration', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    schemas: selectedSchemas,
+                    oracle: oracleData,
+                    postgres: pgData
+                })
+            });
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                log(chunk);
+            }
+            
+        } catch (e) {
+            log("Error starting migration: " + e);
+        }
+    }
+
+    function log(message) {
+        const logBox = document.getElementById('log-output');
+        logBox.innerText += message + "\n";
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+</script>
+
+</body>
+</html>

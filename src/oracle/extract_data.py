@@ -1,3 +1,4 @@
+import sqlglot
 """
 def get_column_comments(conn, table, schema, column_data_dict):
     with conn.cursor() as cursor:
@@ -12,7 +13,7 @@ def get_column_comments(conn, table, schema, column_data_dict):
     return column_data_dict
 """
 
-# Mit Chatgpt generiert bzw anpassen lassen
+# Mit Chatgpt debuggt
 def get_column_comments(conn, table, schema, column_data_dict):
     with conn.cursor() as cursor:
         sql = """
@@ -24,7 +25,6 @@ def get_column_comments(conn, table, schema, column_data_dict):
         cursor.execute(sql, {"owner": schema, "table_name": table})
         rows = cursor.fetchall()
 
-    # Build two maps: exact + upper() fallback
     comment_by_exact = {}
     comment_by_upper = {}
     for col_name, comment in rows:
@@ -33,18 +33,17 @@ def get_column_comments(conn, table, schema, column_data_dict):
         comment_by_exact[col_name] = comment
         comment_by_upper[str(col_name).upper()] = comment
 
-    # 2) Attach to your existing column list by matching names
+
     for col in column_data_dict[table]["columns"]:
         col_name = col[0]
         if col_name is None:
             continue
 
-        # Try exact match first (handles quoted/mixed-case), then UPPER fallback
         comment = comment_by_exact.get(col_name)
         if comment is None:
             comment = comment_by_upper.get(str(col_name).upper())
 
-        col[6] = comment  # may stay None if no comment exists
+        col[6] = comment 
 
     return column_data_dict
 
@@ -70,7 +69,7 @@ def get_tables(conn, owner):
 def create_data_dict(tables):
     column_data_dict = {}
     for table in tables:
-        column_data_dict[table] = {"row_count" : int, "columns" : [], "constraints" : [], "indexes": [], "foreign_keys": []}
+        column_data_dict[table] = {"row_count" : int, "columns" : [], "constraints" : [], "indexes": []}
     return column_data_dict
 
 def get_column_row_count(conn, column_data_dict, schema):
@@ -85,10 +84,12 @@ def get_column_row_count(conn, column_data_dict, schema):
         column_data_dict[table]["row_count"] = row_count
     return column_data_dict
 
+
+# Debugged with Gemini 3
 def   get_column_constraints(conn, column_data_dict, schema):
     tables = column_data_dict.keys()
     for table in tables:
-        # SQL expanded by ChatGPT to encompass all constraints
+        # SQL expanded by ChatGPT to encompass all constraints types
         column_constraint_sql = """ SELECT
                                         cons.owner,
                                         cons.table_name,
@@ -187,7 +188,7 @@ def get_oracle_data(connection, tables, schema):
 
 def get_oracle_indexes(conn, column_data_dict, schema):
     tables = column_data_dict.keys()
-
+    # SQL expanded and rewritten by Chatgpt 5.2
     index_sql = """
         select ind.index_name,
                ind_col.column_name,
@@ -214,28 +215,19 @@ def get_oracle_indexes(conn, column_data_dict, schema):
         order by ind.table_owner, ind.table_name, ind.index_name, ind_col.column_position
     """
 
-    # Durch chatgpt angepasst
+    # Debugged with chat gpt 5.2
     for table in tables:
-        # alle Index-Namen, die zu Constraints gehören (PK/UK etc.)
         constraint_index_names = {
             c[16] for c in column_data_dict[table]["constraints"] if c[16] is not None
         }
-
-        #print(f"\n[{schema}.{table}]")
-        #print("  constraint_index_names:", constraint_index_names)
-
 
         with conn.cursor() as cursor:
             cursor.execute(index_sql, {"t": table, "s": schema})
             indexes = cursor.fetchall()
 
-        #print("  indexes_from_query:", {r[0] for r in indexes})  # r[0] == index_name
-        #print("  indexes_kept:", {x[0] for x in column_data_dict[table]['indexes']})
-
         for (index_name, column_name, column_position, descend,
              index_type, uniqueness, table_owner, table_name, table_type) in indexes:
 
-            # Nur "normale" Indexe, nicht die für Constraints
             if index_name not in constraint_index_names:
                 column_data_dict[table]["indexes"].append([
                     index_name, column_name, column_position, descend,
@@ -243,4 +235,135 @@ def get_oracle_indexes(conn, column_data_dict, schema):
                 ])
 
     return column_data_dict
+
+
+import re
+
+# Mit Gemini 3 und Chatgpt 5.2 generiert
+def transpile_view_syntax(sql_text: str) -> str:
+    if not sql_text:
+        return ""
+
+    s = sql_text
+
+    # 0) Kommentare entfernen (block + line) - schützt dich vor kaputten SELECTs
+    s = re.sub(r"/\*.*?\*/", " ", s, flags=re.S)
+    s = re.sub(r"--[^\n]*", " ", s)
+
+    # 1) NVL -> COALESCE
+    s = re.sub(r"\bNVL\s*\(", "COALESCE(", s, flags=re.I)
+
+    # 2) SYSDATE -> CURRENT_TIMESTAMP (oder CURRENT_DATE, je nach Semantik)
+    s = re.sub(r"\bSYSDATE\b", "CURRENT_TIMESTAMP", s, flags=re.I)
+
+    # 3) DBMS_LOB.GETLENGTH(x) -> length(x)
+    s = re.sub(r"\bDBMS_LOB\.GETLENGTH\s*\(", "length(", s, flags=re.I)
+
+    # 4) DBMS_LOB.SUBSTR(expr, amount, offset) -> substring(expr from offset for amount)
+    # Oracle: SUBSTR(expr, amount, offset)
+    # PG: substring(expr from offset for amount)
+
+    def repl_lob_substr(m: re.Match) -> str:
+        expr = m.group(1).strip()
+        amount = m.group(2).strip()
+        offset = m.group(3).strip()
+        return f"substring({expr} from {offset} for {amount})"
+
+    # Sehr tolerant: expr = alles bis zum ersten Komma
+    s = re.sub(
+        r"(?i)\bDBMS_LOB\s*\.\s*SUBSTR\s*\(\s*([^,]+?)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*\)",
+        repl_lob_substr,
+        s
+    )
+
+    # Fallback: falls DBMS_LOB.<irgendwas> noch existiert -> Prefix entfernen,
+    # damit PG nicht nach Schema "dbms_lob" sucht.
+    s = re.sub(r"(?i)\bDBMS_LOB\s*\.\s*", "", s)
+
+    # 5) RAWTOHEX(x) -> encode(x::bytea, 'hex')
+    s = re.sub(
+        r"\bRAWTOHEX\s*\(\s*([^)]+?)\s*\)",
+        r"encode(\1::bytea, 'hex')",
+        s,
+        flags=re.I
+    )
+
+    # 6) DM_LONG_TO_CLOB(...) -> legacy_long (dein Spezialfall)
+    s = re.sub(r"\bDM_LONG_TO_CLOB\s*\(\s*[^)]*\s*\)", "legacy_long", s, flags=re.I)
+
+    # 7) TRUNC(date) -> date_trunc('day', date)::date (für day-bucketing)
+    s = re.sub(
+        r"\bTRUNC\s*\(\s*([^)]+?)\s*\)",
+        r"date_trunc('day', \1)::date",
+        s,
+        flags=re.I
+    )
+
+    # 8) Oracle-ish DATE_TRUNC('DD', x) -> date_trunc('day', x)
+    s = re.sub(r"date_trunc\(\s*'DD'\s*,", "date_trunc('day',", s, flags=re.I)
+
+
+    # 10) Whitespace normalisieren (optional)
+    s = re.sub(r"\s+", " ", s).strip()
+
+    return s
+
+
+def get_oracle_views(conn, schema):
+    view_sql = """
+            SELECT VIEW_NAME, TEXT, OWNER
+            FROM ALL_VIEWS WHERE OWNER NOT IN ('SYS', 'AUDSYS', 'DBSNMP', 'GSMADMIN_INTERNAL', 'XDB', 'WMSYS', 'CTXSYS', 'ORDSYS', 'ORDDATA', 'OLAPSYS', 'MDSYS', 'LBACSYS', 'DVSYS', 'SYSTEM') AND OWNER = :s
+                """
+
+    with conn.cursor() as cursor:
+        cursor.execute(view_sql, {"s": schema})
+        views = cursor.fetchall()
+
+    for view in views:
+        view_name = view[0]
+        view_list = list(view)
+
+        transpiled_sqlglot_sql = sqlglot.transpile(view_list[1], read="oracle", write="postgres")[0]
+        transpiled_sqlglot_sql = transpiled_sqlglot_sql.replace("\r\n", " ")
+        transpiled_sql = transpile_view_syntax(transpiled_sqlglot_sql)
+
+        view_list[1] = view_list[1].replace("\r\n", " ")
+        # Edited by GitHub Copilot v1.0: Temporarily set search_path so that implicit table names are resolved in the correct schema
+        build_view_creation_sql = f'SET search_path = "{schema}", public;\nCREATE OR REPLACE VIEW "{schema}"."{view_name}" AS {transpiled_sql}'
+        # 
+        
+        with open("view.txt", "a") as output:
+            output.write(f"{build_view_creation_sql};\n\n")
+
+# Debugged with Gemini 3
+def get_oracle_sequences(conn, schema):
+    sequence_extract_sql = """
+        SELECT sequence_name,
+                min_value,
+                max_value,
+                increment_by,
+                cycle_flag,
+                cache_size,
+                order_flag,
+                last_number
+            FROM all_sequences
+            WHERE sequence_owner = :s
+            ORDER BY sequence_name
+    """
+
+    with conn.cursor() as cursor:
+        cursor.execute(sequence_extract_sql, {"s": schema})
+        sequences = cursor.fetchall()
+    
+    list_of_sequences = []
+    for sequence in sequences:
+        max_value = sequence[2]
+        cache_size = sequence[5]
+
+        if max_value > 9223372036854775807:
+            max_value = 9223372036854775807
+        
+        list_of_sequences.append({"sequence_name" : sequence[0], "min_value":sequence[1], "max_value":max_value, "increment_by":sequence[3], "cycle_flag":sequence[4], "cache_size":sequence[5], "order_flag":sequence[6], "last_number":sequence[7]})
+
+    return list_of_sequences
 
