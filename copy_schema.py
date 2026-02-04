@@ -190,7 +190,6 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
             oracle_extract.get_oracle_views(connection_oracle, schema)
             sequences = oracle_extract.get_oracle_sequences(connection_oracle, schema)
             
-            # # Creates Schmeas, tables and comments
             yield "Generating PostgreSQL DDL...\n"
             pg_create.create_postgreSQL_DDL(schema, tables, column_data_dict, data_mapping)
             pg_create.create_postgreSQL_Sequences(sequences, schema)
@@ -214,7 +213,7 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         row_count = 0
         for table in tables:
             row_count += column_data_dict[table]["row_count"]
-        pg_insert.migrate_data(connection_oracle, conn_pg, schema, tables, column_data_dict)
+        pg_insert.migrate_data(connection_oracle, conn_pg, schema, tables, column_data_dict, pg_conf, oracle_conf, row_count)
         end = time.time()
         total_time = end - start
         yield f"Data migration finished. {total_time} seconds with {row_count} total rows\n"
