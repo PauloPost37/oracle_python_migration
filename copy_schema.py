@@ -329,7 +329,7 @@ if __name__ == '__main__':
         # Start browser in a separate thread
         threading.Thread(target=open_browser).start()
         # Run server
-        app.run(debug=False, port=5000)
+        app.run(debug=False, port=5000, host='0.0.0.0')
 
 ## TODO ##
 
