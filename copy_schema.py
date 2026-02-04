@@ -19,6 +19,7 @@ import webbrowser
 import time
 import re
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+import psutil
 
 app = Flask(__name__)
 
@@ -143,8 +144,34 @@ def execute_sql_file(conn, file_path):
         logger.warning(e)
     return False
 
+
+def configure_postgreSQL(pg_conn):
+    #psycopg2.connect(pg_conn)
+    pg_cursor = pg_conn.cursor()
+    print(f"The sytem has {os.cpu_count()} amount of cores")
+    ram_bytes = psutil.virtual_memory().total
+    ram_mb = ram_bytes/1024
+    print(f"The sytem has {ram_bytes/1024/1024} GB of  Ram")
+
+    shared_buffer = int(ram_mb * 0.4)
+    effective_cache_size = int(ram_mb * 0.5)
+    maintenance_work_mem = "128 MB"
+    if shared_buffer/32 < 16:
+        wal_buffers = shared_buffer/32
+    else:
+        wal_buffers = "16 MB"
+    default_statistics_target = 100
+
+    print(f"This results in a shared buffer of: {shared_buffer} MB")
+    print(f"This results in an effective cache size of {effective_cache_size} MB")
+    print(f"This results in a maintenance work memory of {maintenance_work_mem}")
+    print(f"This results in a wal buffer of {wal_buffers} MB")
+    print(f"This results in a default_statistics_ {default_statistics_target}")
+
+
 # Edited (old main()) and adjusted by Gemini 3 pro to work with webUI
 def run_migration_task(schemas, oracle_conf, pg_conf):
+
     global migration_errors
     """Generator function that runs the migration logic and yields log messages."""
     yield "Starting migration process...\\n"
@@ -213,7 +240,7 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         row_count = 0
         for table in tables:
             row_count += column_data_dict[table]["row_count"]
-        pg_insert.migrate_data(connection_oracle, conn_pg, schema, tables, column_data_dict, pg_conf, oracle_conf, row_count)
+        pg_insert.migrate_data(connection_oracle, conn_pg, schema, tables, column_data_dict, pg_conf, oracle_conf, row_count, os.cpu_count())
         end = time.time()
         total_time = end - start
         yield f"Data migration finished. {total_time} seconds with {row_count} total rows\n"
@@ -236,7 +263,7 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         ci_errors = migration_errors
 
         yield "Migration completed successfully!\n"
-
+        configure_postgreSQL(conn_pg)
 
         yield f"Table Migration Errors: {table_errors}\n"
         yield f"Sequence Migration Errors: {sequence_errors}\n"

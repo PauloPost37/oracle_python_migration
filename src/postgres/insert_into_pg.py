@@ -61,6 +61,8 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
     oracle_conn = oracledb.connect(user=connection_data_oracle["un"], password=connection_data_oracle["pw"], dsn=connection_data_oracle["cs"])
     pg_cursor = pg_conn.cursor()
 
+    time.sleep(2)
+
     start = time.time()
     for table in table_set:
         # 1. Build SQL Strings
@@ -103,9 +105,64 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
 
 
 
+def migrate_data_single(oracle_conn, pg_conn, schema, tables, column_data_dict, batch_size=2000):
+    """
+    Migrates data from Oracle to Postgres using server-side cursors and batch inserts.
+    This is memory efficient and fast.
+    """
+    pg_cursor = pg_conn.cursor()
+
+    for table in tables:
+        # 1. Build SQL Strings
+        cols = [row[0] for row in column_data_dict[table]["columns"]]
+        quoted_cols = ", ".join(f'"{c.lower()}"' for c in cols)
+        quoted_cols_ora = ", ".join(f'"{c}"' for c in cols) # Oracle needs uppercase
+        placeholders = ", ".join(["%s"] * len(cols))
+        
+        insert_sql = f'INSERT INTO "{schema}"."{table.lower()}" ({quoted_cols}) VALUES ({placeholders})'
+        select_sql = f'SELECT {quoted_cols_ora} FROM "{schema}"."{table}"'
+        
+        # 2. Stream Data from Oracle
+        with oracle_conn.cursor() as ora_cursor:
+            ora_cursor.arraysize = batch_size
+            ora_cursor.execute(select_sql)
+
+            total_rows = 0
+            while True:
+                # Fetch a batch of rows
+                rows = ora_cursor.fetchmany(batch_size)
+                if not rows:
+                    break
+                
+                # Normalize types (handle BLOBs, CLOBs, etc)
+                cleaned_rows = [normalize_row(row) for row in rows]
+                
+                # 3. Batch Insert into Postgres
+                try:
+                    psycopg2.extras.execute_batch(pg_cursor, insert_sql, cleaned_rows, page_size=batch_size)
+                    total_rows += len(rows)
+                except Exception as e:
+                    pg_conn.rollback()
+                    raise e
+                    
+        # Commit after each table is fully migrated
+        pg_conn.commit()
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Das muss ich nochmal selbst schreiben
 # Mit Gemini 3 pro generiert
-def migrate_data(oracle_conn, pg_conn, schema, tables, column_data_dict, connection_data_pg, connection_data_oracle, row_count, batch_size=2000,):
+def migrate_data(oracle_conn, pg_conn, schema, tables, column_data_dict, connection_data_pg, connection_data_oracle, row_count, processors_count, batch_size=2000,):
     """
     Migrates data from Oracle to Postgres using server-side cursors and batch inserts.
     This is memory efficient and fast.
@@ -113,13 +170,13 @@ def migrate_data(oracle_conn, pg_conn, schema, tables, column_data_dict, connect
     #thread_pool = pool.ThreadedConnectionPool(min_connection, max_connection, user=connection_data["user"], password=connection_data["password"], host=connection_data["host"], port=connection_data["port"], database=connection_data["database_name"]) 
     pg_cursor = pg_conn.cursor()
     
-    split_tables_tuple = responsible_tables(column_data_dict, tables, row_count, 4)
+    split_tables_tuple = responsible_tables(column_data_dict, tables, row_count, processors_count)
     active_processes = []
+    #migrate_data_single(oracle_conn, pg_conn, schema, tables, column_data_dict) 
     for table_set in split_tables_tuple:
         p = Process(target=migrate_parralell, args=(table_set, connection_data_pg, connection_data_oracle, column_data_dict,schema))
         p.start()
         active_processes.append(p)
-    
     for p in active_processes:
         p.join()
 
