@@ -99,7 +99,29 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
                     total_rows += len(rows)
                 except Exception as e:
                     pg_conn.rollback()
-                    print(e)
+                    try:
+                        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                        header_msg = f"{timestamp} | ERROR | Batch insert failed for {table}. Identifying failed rows...\n"
+                        with open("migration_insert_errors.log", "a", encoding="utf-8") as log_file:
+                            log_file.write(header_msg)
+                            
+                        # Iterate through rows to find and log the specific failure
+                        for row_index, row_data in enumerate(cleaned_rows):
+                            try:
+                                # Try inserting single row to test validity
+                                pg_cursor.execute(insert_sql, row_data)
+                                # If successful, rollback to keep DB clean (we are just testing)
+                                pg_conn.rollback()
+                            except Exception as row_error:
+                                pg_conn.rollback()
+                                row_err_msg = f"{timestamp} | ERROR | Row {row_index+1} Failed | Table: {table} | Error: {str(row_error)} | Data: {str(row_data)}\n"
+                                with open("migration_insert_errors.log", "a", encoding="utf-8") as log_file:
+                                    log_file.write(row_err_msg)
+
+                    except Exception as log_err:
+                        print(f"Failed to write to log: {log_err}")
+                    
+                    print(f"Batch failed for {table}: {e}")
                     raise e
                         
             # Commit after each table is fully migrated
@@ -115,7 +137,7 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
     print(total_time)
 
 
-
+# Base functionality added by Gemini 3 and adjusted by Author
 def migrate_data_single(oracle_conn, pg_conn, schema, tables, column_data_dict, batch_size=2000):
     """
     Migrates data from Oracle to Postgres using server-side cursors and batch inserts.

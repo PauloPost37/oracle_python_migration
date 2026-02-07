@@ -26,7 +26,7 @@ def get_pk_metadata(column_data_dict, table):
         "validated": pk_validated,
     }
 
-# Partially generated with chatGPT and debugged with chatgpt
+# Partially generated with chatGPT 5.2 and debugged with Chatgpt 5.2
 def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
     schema_creation_sql = f'CREATE SCHEMA IF NOT EXISTS "{un}";\n'
     with open("output.txt", "a") as output:

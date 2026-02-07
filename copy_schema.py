@@ -1,4 +1,6 @@
+# Licensed under the Universal Permissive License (UPL), Version 1.0
 import oracledb
+# Licensed under the GNU GPL License version 3 
 import psycopg2
 import pprint
 from config.config import data_mapping, oracle_connection_data, postgres_connection_data
@@ -18,6 +20,7 @@ import threading
 import webbrowser
 import time
 import re
+# Copyright 2010 Pallets
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 import psutil
 
@@ -32,7 +35,7 @@ info_logger.setLevel(logging.INFO)
 error_logger = logging.FileHandler("migration_errors.log", encoding="utf-8")
 error_logger.setLevel(logging.ERROR)
 
-## ChatGPT 5.2
+## Added by ChatGPT 5.2
 formatter = logging.Formatter(
     "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
@@ -61,7 +64,7 @@ def remove_primary_indexes(column_data_dict):
 
     return column_data_dict
 
-# Debugged with Gemini 3 pro
+# Debugged and highly adjusted by Gemini 3
 def create_postgres_indexes(column_data_dict):
     tables = column_data_dict.keys()
     insert_index_statements = []
@@ -149,6 +152,7 @@ def update_config_file(oracle_data, pg_data):
     except Exception as e:
         print(f"Failed to update config file: {e}")
 
+# Added by Gemini 3 pro and adjusted by author to implement logging and with the help of: https://www.geeksforgeeks.org/python/read-a-file-line-by-line-in-python/ [accessed: 08.02.2026]
 def execute_sql_file(conn, file_path):
     global migration_errors
     try:
@@ -181,23 +185,12 @@ def configure_postgreSQL():
     if (ram_mb * 0.4 * 1024) < 128:
         shared_buffer = 128
     shared_buffer = int(ram_mb * 0.4)
-    effective_cache_size = int(ram_mb * 0.5)
-    maintenance_work_mem = "128"
-    if shared_buffer/32 < 16:
-        wal_buffers = shared_buffer/32
-    else:
-        wal_buffers = "16"
     default_statistics_target = 100
-    #pg_cursor.execute(f"ALTER SYSTEM SET shared_buffer = '{shared_buffer} MB'")
-    #pg_cursor.execute(f"ALTER SYSTEM SET effective_cache_size = '{effective_cache_size} MB'")
-    #pg_cursor.execute(f"ALTER SYSTEM SET maintenance_work_mem = '{maintenance_work_mem}'")
-    #pg_cursor.execute(f"ALTER SYSTEM SET wal_buffers = '{wal_buffers} MB'")
-    #pg_cursor.execute(f"ALTER SYSTEM SET default_statistics_target = '{default_statistics_target}'")
-    list_of_configs = [shared_buffer, effective_cache_size,maintenance_work_mem, wal_buffers, default_statistics_target]
+    list_of_configs = [shared_buffer, default_statistics_target]
     return list_of_configs
 
 
-# Edited (old main()) and adjusted by Gemini 3 pro to work with webUI
+# Edited (main()) and adjusted by Gemini 3 pro to work with webUI, further adjustments and adaptations by author
 def run_migration_task(schemas, oracle_conf, pg_conf):
 
     global migration_errors
@@ -212,6 +205,10 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         open("output_alter.txt", "w").close()
         open("sequences.txt", "w").close()
         open("view.txt", "w").close()
+        open("migration_errors.log", "w").close()
+        open("migration_info.log", "w").close()
+        open("migration_insert_errors.log", "w").close()
+        open("migration_report.txt", "w").close()
 
         yield "Connecting to Oracle database...\\n"
         
@@ -297,8 +294,17 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
 
         end_migration = time.time()
         total_migration_time = end_migration - start_migration
-        yield "Migration completed successfully!\n"
+        yield "Migration completed!\n"
         pg_server_config = configure_postgreSQL()
+        with open("migration_insert_errors.log", "r") as f:
+            counter = 0
+            for line in f:
+                counter +=1
+            insert_errors = counter/3
+        
+        
+        print(int(insert_errors))
+        yield f"Estimated data migration Errors: {insert_errors}"
         yield f"Table Migration Errors: {table_errors}\n"
         yield f"Sequence Migration Errors: {sequence_errors}\n"
         yield f"View Migration Errors: {view_errors}\n"
@@ -312,7 +318,7 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
             f.write(f"Set: 'shared_buffer' to '{pg_server_config[0]} MB'\n")
             f.write(f"You can adjust the wal_sync_method if you experience any issues with the database crashes \n")
             f.write(f"You can also adjust commit_delay, if youre database has enough troughput. Commit delay specifies how long to delay the commit before a WAL flush is initiated \n")
-            f.write(f"Set: 'default_statistics_target' to '{pg_server_config[4]}'\n You can increase this limit if your table constains varied data")
+            f.write(f"Set: 'default_statistics_target' to '{pg_server_config[1]}'\n You can increase this limit if your table constains varied data")
 
 
 
@@ -325,14 +331,13 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
             conn_pg.close()
 
 
-# Gemini 3 pro
+# Added by Gemini 3 pro
 @app.route('/')
 def index():
     return render_template('index.html', oracle=oracle_connection_data, postgres=postgres_connection_data)
 
 
-# Das kann ich nochmal selbst schreiben
-# Gemini 3 pro
+# Added by Gemini 3 pro
 @app.route('/get_schemas', methods=['POST'])
 def get_schemas():
     data = request.json
