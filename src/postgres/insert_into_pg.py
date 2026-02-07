@@ -34,7 +34,7 @@ def responsible_tables(column_data_dict, tables, row_count, processes):
 
 
 
-# Das muss ich nochmal selbst schreiben
+
 # Mit Gemini 3 pro generiert
 def normalize_row(row):
     """
@@ -55,6 +55,8 @@ def normalize_row(row):
             new_row.append(item)
     return tuple(new_row)
 
+
+# Generated using Gemini 3 pro 
 def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, column_data_dict,schema, batch_size=2000):
     pg_conn = psycopg2.connect(f"dbname={connection_data_pg["database_name"]} user={connection_data_pg["user"]} password={connection_data_pg["password"]} host={connection_data_pg["host"]} port={connection_data_pg["port"]}")
 
@@ -65,6 +67,8 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
 
     start = time.time()
     for table in table_set:
+        with open("migration_report.txt", "a") as f:
+            f.write(f"Migrating {table} with {column_data_dict[table]["row_count"]}       ")
         # 1. Build SQL Strings
         cols = [row[0] for row in column_data_dict[table]["columns"]]
         quoted_cols = ", ".join(f'"{c.lower()}"' for c in cols)
@@ -95,10 +99,17 @@ def migrate_parralell(table_set, connection_data_pg, connection_data_oracle, col
                     total_rows += len(rows)
                 except Exception as e:
                     pg_conn.rollback()
+                    print(e)
                     raise e
                         
             # Commit after each table is fully migrated
         pg_conn.commit()
+
+        pg_cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table.lower()}"')
+        row_count_table = pg_cursor.fetchone()
+
+        with open("migration_report.txt", "a") as f:
+            f.write(f"Migrated {table} with {row_count_table[0]}\n")
     end = time.time()
     total_time = end - start
     print(total_time)
@@ -159,14 +170,9 @@ def migrate_data_single(oracle_conn, pg_conn, schema, tables, column_data_dict, 
 
 
 
-
-# Das muss ich nochmal selbst schreiben
-# Mit Gemini 3 pro generiert
+# connection_oracle, conn_pg, schema, tables, column_data_dict, pg_conf, oracle_conf, row_count, os.cpu_count()
 def migrate_data(oracle_conn, pg_conn, schema, tables, column_data_dict, connection_data_pg, connection_data_oracle, row_count, processors_count, batch_size=2000,):
-    """
-    Migrates data from Oracle to Postgres using server-side cursors and batch inserts.
-    This is memory efficient and fast.
-    """
+
     #thread_pool = pool.ThreadedConnectionPool(min_connection, max_connection, user=connection_data["user"], password=connection_data["password"], host=connection_data["host"], port=connection_data["port"], database=connection_data["database_name"]) 
     pg_cursor = pg_conn.cursor()
     

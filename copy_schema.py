@@ -67,21 +67,44 @@ def create_postgres_indexes(column_data_dict):
     insert_index_statements = []
 
     for table in tables:
+        # Group columns by index_name to handle composite indexes correctly
+        indexes_map = {}
         for index in column_data_dict[table]["indexes"]:
             # Correct Mapping based on extract_data.py
-            # 0: index_name, 1: column_name, ..., 6: table_owner, 7: table_name
+            # 0: index_name, 1: column_name, 2: column_position, ..., 6: table_owner, 7: table_name
             
             index_name = index[0]
             column_name = index[1]
+            column_pos = index[2]
             schema_name = index[6]
             table_name = index[7]
-            uniqueness = index[5]
+            uniqueness = index[5] # Not used in CREATE INDEX, usually handled by constraints
+            
+            if index_name not in indexes_map:
+                indexes_map[index_name] = {
+                    "schema": schema_name,
+                    "table": table_name,
+                    "columns": []
+                }
+            
+            indexes_map[index_name]["columns"].append((column_pos, column_name))
+        
+        # Generate CREATE INDEX statements
+        for index_name, details in indexes_map.items():
+            # Sort columns by position
+            details["columns"].sort(key=lambda x: x[0])
+            
+            # Create column list string: "col1", "col2"
+            column_list_str = ", ".join([f'"{col[1].lower()}"' for col in details["columns"]])
             
             # Format index name: idx_unique_col or similar
             # Use lowercase for standard postgres names
             pg_index_name = f"{index_name.lower()}"
             
-            statement = f"""CREATE INDEX "{pg_index_name}" ON "{schema_name}"."{table_name.lower()}" ("{column_name.lower()}")\n"""
+            schema_name = details["schema"]
+            table_name = details["table"]
+            
+            statement = f"""CREATE INDEX "{pg_index_name}" ON "{schema_name}"."{table_name.lower()}" ({column_list_str});\n"""
             with open("output_alter.txt", "a") as output:
                 output.write(statement)
 
@@ -99,7 +122,11 @@ def update_config_file(oracle_data, pg_data):
             'oracle_connection_data = {\n'
             f'    "un" : "{oracle_data["un"]}",\n'
             f'    "cs" : "{oracle_data["cs"]}",\n'
-            f'    "pw" : "{oracle_data["pw"]}"\n'
+            f'    "pw" : "{oracle_data["pw"]}",\n'
+            f'    "host" : "{oracle_data.get("host", "")}",\n'
+            f'    "port" : "{oracle_data.get("port", "")}",\n'
+            f'    "sid" : "{oracle_data.get("sid", "")}",\n'
+            f'    "use_sid" : {str(oracle_data.get("use_sid", False)).lower().capitalize()}\n'
             '}'
         )
 
@@ -145,28 +172,29 @@ def execute_sql_file(conn, file_path):
     return False
 
 
-def configure_postgreSQL(pg_conn):
-    #psycopg2.connect(pg_conn)
-    pg_cursor = pg_conn.cursor()
+def configure_postgreSQL():
     print(f"The sytem has {os.cpu_count()} amount of cores")
     ram_bytes = psutil.virtual_memory().total
-    ram_mb = ram_bytes/1024
-    print(f"The sytem has {ram_bytes/1024/1024} GB of  Ram")
+    ram_mb = ram_bytes/1024/1024
+    print(f"The sytem has {ram_bytes/1024/1024} MB of  Ram")
 
+    if (ram_mb * 0.4 * 1024) < 128:
+        shared_buffer = 128
     shared_buffer = int(ram_mb * 0.4)
     effective_cache_size = int(ram_mb * 0.5)
-    maintenance_work_mem = "128 MB"
+    maintenance_work_mem = "128"
     if shared_buffer/32 < 16:
         wal_buffers = shared_buffer/32
     else:
-        wal_buffers = "16 MB"
+        wal_buffers = "16"
     default_statistics_target = 100
-
-    print(f"This results in a shared buffer of: {shared_buffer} MB")
-    print(f"This results in an effective cache size of {effective_cache_size} MB")
-    print(f"This results in a maintenance work memory of {maintenance_work_mem}")
-    print(f"This results in a wal buffer of {wal_buffers} MB")
-    print(f"This results in a default_statistics_ {default_statistics_target}")
+    #pg_cursor.execute(f"ALTER SYSTEM SET shared_buffer = '{shared_buffer} MB'")
+    #pg_cursor.execute(f"ALTER SYSTEM SET effective_cache_size = '{effective_cache_size} MB'")
+    #pg_cursor.execute(f"ALTER SYSTEM SET maintenance_work_mem = '{maintenance_work_mem}'")
+    #pg_cursor.execute(f"ALTER SYSTEM SET wal_buffers = '{wal_buffers} MB'")
+    #pg_cursor.execute(f"ALTER SYSTEM SET default_statistics_target = '{default_statistics_target}'")
+    list_of_configs = [shared_buffer, effective_cache_size,maintenance_work_mem, wal_buffers, default_statistics_target]
+    return list_of_configs
 
 
 # Edited (old main()) and adjusted by Gemini 3 pro to work with webUI
@@ -186,7 +214,12 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         open("view.txt", "w").close()
 
         yield "Connecting to Oracle database...\\n"
-        connection_oracle = establish_oracle_connection(oracle_conf["un"], oracle_conf["pw"], oracle_conf["cs"])
+        
+        dsn = oracle_conf["cs"]
+        if oracle_conf.get("use_sid"):
+             dsn = oracledb.makedsn(oracle_conf["host"], oracle_conf["port"], sid=oracle_conf["sid"])
+
+        connection_oracle = establish_oracle_connection(oracle_conf["un"], oracle_conf["pw"], dsn)
         
         yield "Connecting to PostgreSQL database...\\n"
         conn_pg = establish_postgres_connection(
@@ -199,7 +232,7 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
 
         for schema in schemas:
             yield f"Processing schema: {schema}\\n"
-            
+            start_migration = time.time()
             # List of all Tables
             tables = oracle_extract.get_tables(connection_oracle, schema)
             yield f"Found {len(tables)} tables in schema {schema}.\\n"
@@ -236,14 +269,14 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         table_errors = migration_errors
         
         yield "Step 2: Migrating Data (streaming rows)...\n"
-        start = time.time()
+        start_data = time.time()
         row_count = 0
         for table in tables:
             row_count += column_data_dict[table]["row_count"]
         pg_insert.migrate_data(connection_oracle, conn_pg, schema, tables, column_data_dict, pg_conf, oracle_conf, row_count, os.cpu_count())
-        end = time.time()
-        total_time = end - start
-        yield f"Data migration finished. {total_time} seconds with {row_count} total rows\n"
+        end_data = time.time()
+        total_time_data = end_data - start_data
+        yield f"Data migration finished. {total_time_data} seconds with {row_count} total rows\n"
         
         
         yield "Step 3: Creating Sequences (sequences.txt)...\n"
@@ -257,18 +290,32 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         execute_sql_file(conn_pg, "view.txt")
         view_errors = migration_errors
         
-        yield "Step 5: Applying Constraints & Indexes (output_alter.txt) testo...\n"
+        yield "Step 5: Applying Constraints & Indexes (output_alter.txt)\n"
         migration_errors = 0
         execute_sql_file(conn_pg, "output_alter.txt")
         ci_errors = migration_errors
 
+        end_migration = time.time()
+        total_migration_time = end_migration - start_migration
         yield "Migration completed successfully!\n"
-        configure_postgreSQL(conn_pg)
-
+        pg_server_config = configure_postgreSQL()
         yield f"Table Migration Errors: {table_errors}\n"
         yield f"Sequence Migration Errors: {sequence_errors}\n"
         yield f"View Migration Errors: {view_errors}\n"
         yield f"Constraint and Index Migration errors: {ci_errors}\n"
+        yield f"Total migration time: {total_migration_time}, Data Migration time: {total_time_data} \n"
+        yield f"Check the migration_report.txt for a full report\n"
+
+        with open("migration_report.txt", "a") as f:
+            f.write("Migration completed. For optimized PostgreSQL configurations change the following parameters in the postgresql.conf: \n")
+            f.write(f"Set: 'shared_buffer' to '{pg_server_config[0]} MB'\n")
+            f.write(f"Set: 'effective_cache_size' to '{pg_server_config[1]} MB'\n")
+            f.write(f"Set: 'maintenance work memory' to '{pg_server_config[2]} KB'\n")
+            f.write(f"Set: 'wal_buffer' to '{pg_server_config[3]} MB'\n")
+            f.write(f"Set: 'default_statistics_target' to '{pg_server_config[4]}'\n")
+
+
+
     except Exception as e:
         yield f"ERROR: {str(e)}\\n"
         import traceback
@@ -293,7 +340,12 @@ def get_schemas():
     pg_conf = data.get('postgres')
     
     try:
-        conn = establish_oracle_connection(oracle_conf["un"], oracle_conf["pw"], oracle_conf["cs"])
+        # Determine DSN
+        dsn = oracle_conf["cs"]
+        if oracle_conf.get("use_sid"):
+            dsn = oracledb.makedsn(oracle_conf["host"], oracle_conf["port"], sid=oracle_conf["sid"])
+
+        conn = establish_oracle_connection(oracle_conf["un"], oracle_conf["pw"], dsn)
         schemas = oracle_extract.get_all_schemas(conn)
         conn.close()
         
@@ -321,17 +373,14 @@ def open_browser():
     webbrowser.open('http://127.0.0.1:5000')
 
 if __name__ == '__main__':
-    user_input = input("Welcome to the Oracle to PostgreSQL migration tool! This tool comes with multiple options to guide you through the migration process. Enter 1 for CLI and two for WebUI: ")
-    if user_input == "1":
-        print("The Migration through the CLI will use the config file placed under config/config.py.\n To ensure the connection works, please enter connection information before starting the migration process.\n Is the config.py configured correctly? [Y/N] : ")
-    if user_input == "2":
+        if sys.argv[0]:
+            print("Okay it works")
 
         # Start browser in a separate thread
         threading.Thread(target=open_browser).start()
         # Run server
         app.run(debug=False, port=5000, host='0.0.0.0')
 
-## TODO ##
 
-# correctly translate bytea
+
 

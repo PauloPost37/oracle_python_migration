@@ -31,9 +31,39 @@
                             <label class="form-label">Password</label>
                             <input type="password" class="form-control" id="oracle_pw" value="{{ oracle.pw }}">
                         </div>
+
+                        <div id="oracle_cs_group">
+                            <div class="mb-3">
+                                <label class="form-label">Connection String</label>
+                                <input type="text" class="form-control" id="oracle_cs" value="{{ oracle.cs }}">
+                            </div>
+                        </div>
+
+                        <div id="oracle_host_group" style="display:none;">
+                            <div class="mb-3">
+                                <label class="form-label">Host</label>
+                                <input type="text" class="form-control" id="oracle_host" value="{{ oracle.host }}" placeholder="Required if using SID">
+                            </div>
+                        </div>
+
                         <div class="mb-3">
-                            <label class="form-label">Connection String</label>
-                            <input type="text" class="form-control" id="oracle_cs" value="{{ oracle.cs }}">
+                            <label class="form-label">Port</label>
+                            <input type="text" class="form-control" id="oracle_port" value="{{ oracle.port }}" placeholder="Always required">
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="use_sid_mode" onchange="toggleOracleMode()" {% if oracle.use_sid %}checked{% endif %}>
+                            <label class="form-check-label" for="use_sid_mode">
+                                Use Host/Port/SID Connection
+                            </label>
+                        </div>
+
+                        <div id="oracle_sid_group" style="display:none;">
+                            <div class="mb-3">
+                                <label class="form-label">SID / Service Name</label>
+                                <input type="text" class="form-control" id="oracle_sid" value="{{ oracle.sid }}" placeholder="Required if using SID">
+                            </div>
+                             <small class="text-muted">Hostname and SID are only needed if the Oracle DB uses an SID.</small>
                         </div>
                     </form>
                 </div>
@@ -99,11 +129,32 @@
 </div>
 
 <script>
+    function toggleOracleMode() {
+        const useSid = document.getElementById('use_sid_mode').checked;
+        const csGroup = document.getElementById('oracle_cs_group');
+        const sidGroup = document.getElementById('oracle_sid_group');
+        const hostGroup = document.getElementById('oracle_host_group');
+        
+        if (useSid) {
+            csGroup.style.display = 'none';
+            sidGroup.style.display = 'block';
+            hostGroup.style.display = 'block';
+        } else {
+            csGroup.style.display = 'block';
+            sidGroup.style.display = 'none';
+            hostGroup.style.display = 'none';
+        }
+    }
+
     async function loadSchemas() {
         const oracleData = {
             un: document.getElementById('oracle_un').value,
             pw: document.getElementById('oracle_pw').value,
-            cs: document.getElementById('oracle_cs').value
+            host: document.getElementById('oracle_host').value,
+            port: document.getElementById('oracle_port').value,
+            sid: document.getElementById('oracle_sid').value,
+            cs: document.getElementById('oracle_cs').value,
+            use_sid: document.getElementById('use_sid_mode').checked
         };
         
         // Also gather PG data to save everything
@@ -168,7 +219,11 @@
         const oracleData = {
             un: document.getElementById('oracle_un').value,
             pw: document.getElementById('oracle_pw').value,
-            cs: document.getElementById('oracle_cs').value
+            host: document.getElementById('oracle_host').value,
+            port: document.getElementById('oracle_port').value,
+            sid: document.getElementById('oracle_sid').value,
+            cs: document.getElementById('oracle_cs').value,
+            use_sid: document.getElementById('use_sid_mode').checked
         };
         
         const pgData = {
@@ -212,6 +267,9 @@
         logBox.innerText += message + "\n";
         logBox.scrollTop = logBox.scrollHeight;
     }
+    
+    // Initialize state on load
+    window.addEventListener('load', toggleOracleMode);
 </script>
 
 </body>

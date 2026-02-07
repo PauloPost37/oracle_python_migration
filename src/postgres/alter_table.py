@@ -117,8 +117,8 @@ def create_postgreSQL_alter_DDL(schema, tables, column_data_dict):
                 ref_owner = grouped_constraints[constraint].get("ref_owner", schema)
                 ref_table = grouped_constraints[constraint].get("ref_table", table)
 
-                alter_table_statement = f"""ALTER TABLE "{schema}"."{table.lower()}" """
-                alter_table_statement += f"""ADD CONSTRAINT "{constraint.lower()}" FOREIGN KEY ({child_cols}) REFERENCES "{ref_owner}"."{ref_table.lower()}" ({parent_cols})"""
+                alter_table_statement = f"""ALTER TABLE "{schema}"."{table}" """
+                alter_table_statement += f"""ADD CONSTRAINT "{constraint.lower()}" FOREIGN KEY ({child_cols}) REFERENCES "{ref_owner}"."{ref_table}" ({parent_cols})"""
 
 
                 deferrable = grouped_constraints[constraint].get("deferrable")

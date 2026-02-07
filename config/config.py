@@ -49,14 +49,18 @@ data_mapping = {
 oracle_connection_data = {
     "un" : "ADMIN_ALL",
     "cs" : "localhost/xepdb1",
-    "pw" : ""
+    "pw" : "abcd1234",
+    "host" : "localhost",
+    "port" : "1521",
+    "sid" : "xe",
+    "use_sid" : False
 }
 
 postgres_connection_data = {
     "database_name" : "postgres",
     "user" : "postgres",
-    "password" : "",
+    "password" : "abcd1234",
     "host" : "localhost",
     "port" : "5432"
-}
+} 
 
