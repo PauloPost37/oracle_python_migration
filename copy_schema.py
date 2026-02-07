@@ -307,12 +307,12 @@ def run_migration_task(schemas, oracle_conf, pg_conf):
         yield f"Check the migration_report.txt for a full report\n"
 
         with open("migration_report.txt", "a") as f:
+            # https://www.postgresql.org/docs/current/runtime-config-wal.html Accessed 07.02.2026
             f.write("Migration completed. For optimized PostgreSQL configurations change the following parameters in the postgresql.conf: \n")
             f.write(f"Set: 'shared_buffer' to '{pg_server_config[0]} MB'\n")
-            f.write(f"Set: 'effective_cache_size' to '{pg_server_config[1]} MB'\n")
-            f.write(f"Set: 'maintenance work memory' to '{pg_server_config[2]} KB'\n")
-            f.write(f"Set: 'wal_buffer' to '{pg_server_config[3]} MB'\n")
-            f.write(f"Set: 'default_statistics_target' to '{pg_server_config[4]}'\n")
+            f.write(f"You can adjust the wal_sync_method if you experience any issues with the database crashes \n")
+            f.write(f"You can also adjust commit_delay, if youre database has enough troughput. Commit delay specifies how long to delay the commit before a WAL flush is initiated \n")
+            f.write(f"Set: 'default_statistics_target' to '{pg_server_config[4]}'\n You can increase this limit if your table constains varied data")
 
 
 
@@ -373,9 +373,31 @@ def open_browser():
     webbrowser.open('http://127.0.0.1:5000')
 
 if __name__ == '__main__':
-        if sys.argv[0]:
-            print("Okay it works")
+    if len(sys.argv) > 1:
+        # CLI Mode
+        try:
+            schema_arg = sys.argv[1]
+            schemas = [schema_arg] # Migration task expects a list
+            
+            print(f"Starting migration via CLI for schema: {schema_arg}")
+            print(f"Using configuration from config/config.py")
 
+            # Iterate over the generator to execute the migration
+            for log_message in run_migration_task(schemas, oracle_connection_data, postgres_connection_data):
+                # Handle mixed newline formats from generator
+                clean_msg = log_message.replace('\\n', '\n')
+                print(clean_msg, end='')
+                if not clean_msg.endswith('\n'):
+                    print()
+                    
+        except KeyboardInterrupt:
+            print("\nMigration stopped by user.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"\nCritical Error: {e}")
+            sys.exit(1)
+    else:
+        # WebUI Mode
         # Start browser in a separate thread
         threading.Thread(target=open_browser).start()
         # Run server
