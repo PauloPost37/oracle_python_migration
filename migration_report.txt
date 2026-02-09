@@ -1,0 +1,43 @@
+Migrating LOCATEDON with 434       Migrated LOCATEDON with 434
+Migrating LOCATED with 857       Migrated LOCATED with 857
+Migrating BORDERS with 320       Migrated BORDERS with 320
+Migrating CITY with 3111       Migrating CONTINENT with 5       Migrated CONTINENT with 5
+Migrating COUNTRY with 238       Migrated CITY with 3111
+Migrated COUNTRY with 238
+Migrating ECONOMY with 238       Migrated ECONOMY with 238
+Migrating ENCOMPASSES with 242       Migrated ENCOMPASSES with 242
+Migrating ETHNICGROUP with 540       Migrated ETHNICGROUP with 540
+Migrating GEO_DESERT with 154       Migrated GEO_DESERT with 154
+Migrating GEO_ESTUARY with 265       Migrated GEO_ESTUARY with 265
+Migrating GEO_ISLAND with 418       Migrated GEO_ISLAND with 418
+Migrating GEO_LAKE with 253       Migrated GEO_LAKE with 253
+Migrating GEO_MOUNTAIN with 297       Migrated GEO_MOUNTAIN with 297
+Migrating GEO_RIVER with 851       Migrated GEO_RIVER with 851
+Migrating GEO_SEA with 735       Migrated GEO_SEA with 735
+Migrating GEO_SOURCE with 219       Migrated GEO_SOURCE with 219
+Migrating ISMEMBER with 8008       Migrating ISLANDIN with 349       Migrated ISLANDIN with 349
+Migrating LANGUAGE with 144       Migrated LANGUAGE with 144
+Migrating MERGESWITH with 54       Migrated MERGESWITH with 54
+Migrating MOUNTAINONISLAND with 69       Migrated MOUNTAINONISLAND with 69
+Migrating POPULATION with 238       Migrated POPULATION with 238
+Migrated ISMEMBER with 8008
+Migrating PROVINCE with 1450       Migrated PROVINCE with 1450
+Migrating RELIGION with 454       Migrated RELIGION with 454
+Migrating ORGANIZATION with 153       Migrated ORGANIZATION with 153
+Migrating POLITICS with 238       Migrated POLITICS with 238
+Migrating T_PARENT with 0       Migrated T_PARENT with 0
+Migrating T_CHILD with 0       Migrated T_CHILD with 0
+Migrating P with 0       Migrated P with 0
+Migrating C with 0       Migrated C with 0
+Estimated data migration Errors: 0.0
+Table Migration Errors: 0
+Sequence Migration Errors: 0
+View Migration Errors: 0
+Constraint and Index Migration errors: 0
+Total migration time: 2.139139175415039, Data Migration time: 1.8692100048065186 
+Migration completed. For optimized PostgreSQL configurations change the following parameters in the postgresql.conf: 
+Set: 'shared_buffer' to '13040 MB'
+You can adjust the wal_sync_method if you experience any issues with the database crashes 
+You can also adjust commit_delay, if youre database has enough troughput. Commit delay specifies how long to delay the commit before a WAL flush is initiated 
+Set: 'default_statistics_target' to '100'
+ You can increase this limit if your table constains varied data

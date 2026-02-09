@@ -1,6 +1,6 @@
 import oracledb
 
-# Replaces LOBS with strings 
+# Replaces LOBS with strings, Debugged with Chat Gpt 5.2
 def clean_oracle_data(oracle_data_sql):
     oracle_data_sql = oracle_data_sql
     oracle_data_sql_key_list = oracle_data_sql.keys()

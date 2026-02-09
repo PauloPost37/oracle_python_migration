@@ -1,13 +1,19 @@
-import getpass
+#This file contains mapping rules derived from Ora2Pg (https://ora2pg.darold.net/),
+#which is licensed under the GNU General Public License v3.0.
 
-# ORA2PG Data Mapping
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, version 3.
+
+#A copy of the GPLv3 license should be included in the LICENSE file.
+
 data_mapping = {
     "NUMBER" : "numeric",
     "CHAR" : "char",
     "NCHAR" : "char",
-    "VARCHAR" : "text",  ## Hier könnte es probleme geben
+    "VARCHAR" : "varchar",  
     "NVARCHAR" : "varchar",
-    "VARCHAR2" : "text",  ## Unterschiede Varchar2 und Varchar bei oracle - 
+    "VARCHAR2" : "varchar",  
     "NVARCHAR" : "varchar",
     "NVARCHAR2" : "varchar",
     "STRING" : "varchar",
@@ -45,7 +51,7 @@ data_mapping = {
     "ST_GEOMETRY" : "geometry"
 }
 
-
+# Expanded by Gemini 3 Pro
 oracle_connection_data = {
     "un" : "ADMIN_ALL",
     "cs" : "localhost/xepdb1",
@@ -55,6 +61,7 @@ oracle_connection_data = {
     "sid" : "xe",
     "use_sid" : False
 }
+
 
 postgres_connection_data = {
     "database_name" : "postgres",

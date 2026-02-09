@@ -26,7 +26,7 @@ def get_pk_metadata(column_data_dict, table):
         "validated": pk_validated,
     }
 
-# Partially generated with chatGPT 5.2 and debugged with Chatgpt 5.2
+# Heavily expanded with chatGPT 5.2 and debugged with Chatgpt 5.2
 def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
     schema_creation_sql = f'CREATE SCHEMA IF NOT EXISTS "{un}";\n'
     with open("output.txt", "a") as output:
@@ -134,7 +134,7 @@ def create_postgreSQL_DDL(un, tables, column_data_dict, data_mapping):
             if comment_lines:
                 output.write("\n".join(comment_lines) + "\n")
 
-
+# Debugged with Gemini 3 Pro
 def create_postgreSQL_Sequences(sequences, schema):
     # Sequence structure : {"sequence_name" : sequence[0], "min_value":sequence[1], "max_value":sequence[2], "increment_by":sequence[3], "cycle_flag":sequence[4], "cache_size":sequence[5], "order_flag":sequence[6], "last_number":sequence[7]}
     for sequence in sequences:
