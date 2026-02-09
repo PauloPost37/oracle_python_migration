@@ -19,14 +19,14 @@ The installation is conducted in only a few steps:
 
 5. source install.sh
 
-The installation is now completed and you are inside the virtual environment to conduct the migration. If you exit out of the environment you can simple execute install.sh again
+The installation is now completed and you are inside the virtual environment to conduct the migration. If you exit out of the environment you can simple execute install.sh again.
 
 The migration process can be used in two ways:
 
-1. By entering: python3 copy_schema.py into the terminal a text prompt will pop up indicating the IP and Port the WEBUI is running on. Simply enter the IP and Port into the adress bar of your browser. Next enter the connection data. This data is later saved in the config file. Afterwards press on: Load Schemas & Save Config. You can then choose the schemas you want to migrate. The last step is to press on "Start Migration".
+1. By entering: python3 copy_schema.py into the terminal, a text prompt will pop up indicating the IP and Port the WEBUI is running on. Simply enter the IP and Port into the adress bar of your browser. Next enter the connection data. This data is later saved in the config file. Afterwards press: Load Schemas & Save Config. You can then choose the schemas you want to migrate. The last step is to press: "Start Migration".
 
-2. Configure the config.py located in the config directory. There you can input the connection details to the Oracle and PostgreSQL database. Next type python3 copy_schema.py into the terminal followed by the Schema name you want to migrate.
+2. Configure the config.py located in the config directory. There you can input the connection details to the Oracle and PostgreSQL database. Next type: python3 copy_schema.py into the terminal followed by the Schema name you want to migrate.
 Example: python3 copy_schema.py MONDIAL
 
 Both methods will leave you with several LOG files aswell as a migration_report.txt. 
-Along with the LOG file you also have access to the output files which hold the executed SQL for the alter statements and the create statements. 
+Along with the LOG files you also have access to the output files which hold the executed SQL for the alter statements and the create statements. 
