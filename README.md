@@ -1,4 +1,4 @@
-This project was implemented during the making of my Bachelors Thesis. The project is a proof of concept and has no guarantee that it will work without potential errors. 
+This project was implemented during the making of my Bachelors thesis. The project is a proof of concept and has no guarantee that it will work without potential errors. 
 
 The only supported OS is: Linux
 
@@ -9,7 +9,7 @@ GNU General Public License for more details.
 
 The installation is conducted in only a few steps:
 
-1. Either clone the git repo if you have git set or use: wget https://github.com/PauloPost37/oracle_python_migration/archive/refs/heads/main.zip
+1. Either clone the git repo if you have git set up, or use: wget https://github.com/PauloPost37/oracle_python_migration/archive/refs/heads/main.zip
 
 2. unzip main.zip
 
